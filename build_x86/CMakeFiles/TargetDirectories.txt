@@ -1,0 +1,8 @@
+/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/CMakeFiles/kraftek_bms.dir
+/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/CMakeFiles/edit_cache.dir
+/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/CMakeFiles/rebuild_cache.dir
+/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/CMakeFiles/list_install_components.dir
+/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/CMakeFiles/install.dir
+/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/CMakeFiles/install/local.dir
+/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/CMakeFiles/install/strip.dir
+/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/CMakeFiles/kraftek_bms_autogen.dir

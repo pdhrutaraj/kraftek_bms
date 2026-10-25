@@ -1,0 +1,3 @@
+# Hashes of file build rules.
+18e340760f7c0a941d5852e96a47c634 CMakeFiles/kraftek_bms_autogen
+4ff91b028e795c33486d044c04acf475 kraftek_bms_autogen/3YJK5W5UP7/qrc_resources.cpp

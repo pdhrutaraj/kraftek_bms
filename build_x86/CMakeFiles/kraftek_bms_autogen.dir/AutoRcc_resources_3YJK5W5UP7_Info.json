@@ -1,0 +1,22 @@
+{
+	"BUILD_DIR" : "/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/kraftek_bms_autogen",
+	"CMAKE_BINARY_DIR" : "/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86",
+	"CMAKE_CURRENT_BINARY_DIR" : "/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86",
+	"CMAKE_CURRENT_SOURCE_DIR" : "/home/prakash/ai_based_battery_monitor/kraftek_bms",
+	"CMAKE_SOURCE_DIR" : "/home/prakash/ai_based_battery_monitor/kraftek_bms",
+	"INCLUDE_DIR" : "/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/kraftek_bms_autogen/include",
+	"INPUTS" : 
+	[
+		"/home/prakash/ai_based_battery_monitor/kraftek_bms/resources/styles/bms.qss"
+	],
+	"LOCK_FILE" : "/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/CMakeFiles/kraftek_bms_autogen.dir/AutoRcc_resources_3YJK5W5UP7_Lock.lock",
+	"MULTI_CONFIG" : false,
+	"OPTIONS" : [ "-name", "resources" ],
+	"OUTPUT_CHECKSUM" : "3YJK5W5UP7",
+	"OUTPUT_NAME" : "qrc_resources.cpp",
+	"RCC_EXECUTABLE" : "/home/prakash/Qt/6.5.3/gcc_64/./libexec/rcc",
+	"RCC_LIST_OPTIONS" : [ "--list" ],
+	"SETTINGS_FILE" : "/home/prakash/ai_based_battery_monitor/kraftek_bms/build_x86/CMakeFiles/kraftek_bms_autogen.dir/AutoRcc_resources_3YJK5W5UP7_Used.txt",
+	"SOURCE" : "/home/prakash/ai_based_battery_monitor/kraftek_bms/resources/resources.qrc",
+	"VERBOSITY" : 0
+}
