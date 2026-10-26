@@ -16,3 +16,6 @@ compile_commands.json
 *.sqlite
 *.sqlite3
 *.log
+
+/build_x86/
+/build_tx2nx/
