@@ -1,0 +1,18 @@
+/build_x86/
+/build_tx2nx/
+
+# Platform-specific build output
+/build_x86/
+/build_tx2nx/
+
+# CMake-generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# Runtime data and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log

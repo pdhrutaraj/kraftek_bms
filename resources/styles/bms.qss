@@ -1,0 +1,50 @@
+/* KRAFTEK BMS professional console theme. High contrast, restrained status colors. */
+* { font-family: "Inter", "Noto Sans", "DejaVu Sans", sans-serif; }
+QMainWindow, QWidget#appRoot, QStackedWidget#pageStack { background: #0b1118; color: #e7eef5; }
+QFrame#topBar { background: #101923; border-bottom: 1px solid #263543; }
+QLabel#brandName { color: #f1f6fb; font-size: 20px; font-weight: 800; letter-spacing: 2px; }
+QLabel#brandSub { color: #7f96a9; font-size: 9px; letter-spacing: 1.4px; }
+QFrame#topSeparator { background: #314251; }
+QLabel#screenTitle { color: #e8f0f7; font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+QLabel#screenSubtitle, QLabel#microLabel, QLabel#metricEyebrow, QLabel#sectionMeta, QLabel#sideSection { color: #8499ab; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; }
+QLabel#linkPill { color: #f2c76d; background: #332b1c; border: 1px solid #62502c; border-radius: 5px; padding: 6px 9px; font-size: 10px; font-weight: 700; }
+QLabel#linkPillBad { color: #ff8795; background: #3c2027; border: 1px solid #7c3944; border-radius: 5px; padding: 6px 9px; font-size: 10px; font-weight: 700; }
+QLabel#clockValue { color: #d5e0e9; font-size: 12px; font-weight: 600; }
+QFrame#sidebar { background: #0e161f; border-right: 1px solid #263543; }
+QPushButton#navButton, QPushButton#navButtonActive { text-align: left; border-radius: 6px; padding: 13px 12px; font-size: 10px; font-weight: 700; letter-spacing: .6px; }
+QPushButton#navButton { color: #8ea1b2; background: transparent; border: 1px solid transparent; }
+QPushButton#navButton:hover { color: #eaf2f8; background: #172431; }
+QPushButton#navButtonActive { color: #eafaf7; background: #12302f; border: 1px solid #245b56; }
+QComboBox#modeCombo { color: #dce7ef; background: #17232f; border: 1px solid #344757; border-radius: 5px; padding: 10px; min-height: 20px; }
+QComboBox QAbstractItemView { color: #e7eef5; background: #17232f; selection-background-color: #245b56; }
+QLabel#sideNote { color: #718697; font-size: 10px; line-height: 1.4; }
+QLabel#classification { color: #f0c56c; background: #30291d; border: 1px solid #55472c; border-radius: 4px; padding: 8px 4px; font-size: 9px; font-weight: 800; }
+QLabel#pageHeading { color: #edf4fa; font-size: 24px; font-weight: 750; }
+QLabel#pageDescription { color: #8ea1b1; font-size: 11px; }
+QLabel#statePill { color: #5de0ba; background: #14332e; border: 1px solid #28695d; border-radius: 5px; padding: 8px 13px; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
+QFrame#metricCard, QFrame#batteryCard, QFrame#panel { background: #111b25; border: 1px solid #263746; border-radius: 8px; }
+QLabel#metricValue { color: #f0f6fb; font-size: 29px; font-weight: 750; }
+QLabel#metricUnit { color: #8499aa; font-size: 11px; padding-bottom: 4px; }
+QLabel#sectionHeading, QLabel#panelHeading { color: #dce7ef; font-size: 12px; font-weight: 800; letter-spacing: .8px; }
+QLabel#batteryName { color: #a7bac9; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
+QLabel#statusOnline { color: #55d8b1; font-size: 9px; font-weight: 800; }
+QLabel#batteryVoltage { color: #f1f6fb; font-size: 30px; font-weight: 750; }
+QLabel#batteryStatValue { color: #e3edf5; font-size: 15px; font-weight: 650; }
+QFrame#thinSeparator { background: #273746; }
+QProgressBar#socBar { background: #263746; border: 0; border-radius: 3px; }
+QProgressBar#socBar::chunk { background: #42c9ad; border-radius: 3px; }
+QLabel#eventTitle { color: #dce7ef; font-size: 11px; font-weight: 650; }
+QLabel#eventMeta { color: #7f94a5; font-size: 10px; }
+QLabel#eventDotGreen { color: #50d8b2; font-size: 15px; }
+QLabel#eventDotAmber { color: #e9bc62; font-size: 15px; }
+QLabel#alarmHeadline { color: #f0c66c; font-size: 14px; font-weight: 800; }
+QLabel#systemStateValue { color: #e9c46c; font-size: 13px; font-weight: 800; padding-top: 8px; }
+QTableView#dataTable, QTableWidget#eventTable { color: #dce7ef; background: #111b25; alternate-background-color: #15212c; gridline-color: #293a49; border: 1px solid #293a49; selection-background-color: #1c4a49; selection-color: #ffffff; }
+QHeaderView::section { color: #8ea3b5; background: #172430; border: 0; border-bottom: 1px solid #304252; padding: 12px 10px; font-size: 9px; font-weight: 800; letter-spacing: .8px; }
+QTableView::item, QTableWidget::item { padding: 10px 8px; border: 0; }
+QFrame#footerBar { background: #0a1016; border-top: 1px solid #263543; }
+QLabel#footerText { color: #6f8394; font-size: 9px; font-weight: 700; letter-spacing: .7px; }
+QLabel#footerWarning { color: #d9b55e; font-size: 9px; font-weight: 800; letter-spacing: .5px; }
+QScrollBar:vertical { background: #101923; width: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: #354858; min-height: 22px; border-radius: 4px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
