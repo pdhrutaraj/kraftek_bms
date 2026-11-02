@@ -60,3 +60,18 @@ Safety protections must be deterministic and local to the BMS/protection hardwar
 ## SQLite3 runtime behavior
 
 The application creates `kraftek_bms.sqlite3` under Qt's `QStandardPaths::AppDataLocation` for the application. It initializes the schema automatically and writes one telemetry snapshot plus four block-reading rows on each refresh. Diagnostic findings are written to the `events` table when the advisory finding changes. The Qt `QSQLITE` driver/plugin must be present in the Qt 6.5.3 installation. The application continues to be a simulator until a qualified hardware data source replaces `SimulatedDataSource`.
+
+
+## Responsive dashboard and historical trends
+
+The dashboard adapts its metric and battery-card grids to the available window width, uses a compact sidebar on narrow windows, and wraps each page in a scroll area to prevent content clipping. Individual battery SOH percentages and progress bars are shown alongside the bank SOH, which is derived as the minimum valid battery SOH. The overview also reports charging, discharging, or idle/float from the simulator's current-sign convention (positive current = charging; negative = discharge).
+
+A **Historical Trends** page provides start/end date-time selection and plotting for bank or B1–B4 history stored in SQLite. Available series include voltage, SoC, SoH, current, individual battery temperature, derived SoC drain rate, and indicative ΔV/ΔI internal-resistance estimates. History is sourced from saved telemetry snapshots; the chart is empty until records exist in the selected time window. Drain rate needs at least two samples. Resistance is only an estimate and requires sufficient current variation; it is not a validated DC internal-resistance test. Because the four batteries are in series, per-battery current is the same string current in this prototype; no separate battery current sensor is simulated.
+
+All new measurements and trends remain **simulation-only/advisory**. No hardware communication or safety-protection behavior is added by these UI changes.
+
+## RXN BMS protocol layer (read-only foundation)
+
+A standalone RS-485/UART master transport is available in `src/services/RxnBmsProtocol.{h,cpp}`. It implements the RXN v2 serial settings, command framing, RTD register reads, ACK parsing and 50 ms timeout. The application still launches in simulation mode; no serial port is opened automatically and no BMS write commands are implemented.
+
+Read `docs/rxn_bms_protocol_v2_implementation.md` before connecting hardware. The document does not fully define checksum generation or all register scales/response lengths. The current `0x55` checksum interpretation is provisional and must be confirmed with RXN. Raw register data is returned without guessed unit conversion. Qt 6 SerialPort is now a build dependency.

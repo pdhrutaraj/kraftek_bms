@@ -72,6 +72,53 @@ bool TelemetryDatabase::logEvent(const QString &severity, const QString &code, c
 }
 
 
+
+QList<HistoricalReading> TelemetryDatabase::queryHistory(const QDateTime &startUtc,
+                                                         const QDateTime &endUtc,
+                                                         int batteryId) {
+    QList<HistoricalReading> rows;
+    if (!ready_ || !startUtc.isValid() || !endUtc.isValid() || startUtc > endUtc) {
+        lastError_ = QStringLiteral("Invalid history range or database unavailable");
+        return rows;
+    }
+
+    QSqlQuery q(db_);
+    q.prepare(QStringLiteral(
+        "SELECT t.timestamp_utc,t.bank_voltage_v,t.bank_current_a,t.soc_pct,t.soh_pct,"
+        "b.block_id,b.voltage_v,b.temperature_c,b.soc_pct,b.soh_pct,b.sensor_valid "
+        "FROM telemetry t LEFT JOIN block_readings b ON b.telemetry_id=t.id "
+        "AND (?<>0 AND b.block_id=?) "
+        "WHERE t.timestamp_utc>=? AND t.timestamp_utc<=? "
+        "ORDER BY t.timestamp_utc ASC"));
+    q.addBindValue(batteryId);
+    q.addBindValue(batteryId);
+    q.addBindValue(startUtc.toUTC().toString(Qt::ISODateWithMs));
+    q.addBindValue(endUtc.toUTC().toString(Qt::ISODateWithMs));
+    if (!q.exec()) {
+        lastError_ = q.lastError().text();
+        return rows;
+    }
+
+    while (q.next()) {
+        HistoricalReading r;
+        r.timestampUtc = QDateTime::fromString(q.value(0).toString(), Qt::ISODateWithMs);
+        if (!r.timestampUtc.isValid())
+            r.timestampUtc = QDateTime::fromString(q.value(0).toString(), Qt::ISODate).toUTC();
+        r.bankVoltageV = q.value(1).toDouble();
+        r.bankCurrentA = q.value(2).toDouble();
+        r.bankSocPct = q.value(3).toDouble();
+        r.bankSohPct = q.value(4).toDouble();
+        r.batteryId = q.value(5).isNull() ? 0 : q.value(5).toInt();
+        r.batteryVoltageV = q.value(6).toDouble();
+        r.batteryTemperatureC = q.value(7).toDouble();
+        r.batterySocPct = q.value(8).toDouble();
+        r.batterySohPct = q.value(9).toDouble();
+        r.sensorValid = q.value(10).toInt() != 0;
+        rows.push_back(r);
+    }
+    return rows;
+}
+
 bool TelemetryDatabase::saveDiagnostic(qint64 snapshotId, const QString &scenario, const QString &status,
                                        const QString &summary, const QString &mlClass,
                                        double statisticalScore, double mlScore) {

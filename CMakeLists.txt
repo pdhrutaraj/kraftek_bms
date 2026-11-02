@@ -7,7 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Sql)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Sql SerialPort)
 
 qt_add_executable(kraftek_bms
     src/main.cpp
@@ -15,8 +15,11 @@ qt_add_executable(kraftek_bms
     src/interfaces/IBatteryDataSource.h
     src/services/SimulatedDataSource.h
     src/services/SimulatedDataSource.cpp
+    src/services/RxnBmsProtocol.h
+    src/services/RxnBmsProtocol.cpp
     src/services/TelemetryDatabase.h
     src/services/TelemetryDatabase.cpp
+    src/services/BatteryHealthCalculator.h
     src/ai/DiagnosticEngine.h
     src/ai/DiagnosticEngine.cpp
     src/model/BatteryModel.h
@@ -28,7 +31,7 @@ qt_add_executable(kraftek_bms
     resources/resources.qrc
 )
 
-target_link_libraries(kraftek_bms PRIVATE Qt6::Core Qt6::Widgets Qt6::Sql)
+target_link_libraries(kraftek_bms PRIVATE Qt6::Core Qt6::Widgets Qt6::Sql Qt6::SerialPort)
 target_include_directories(kraftek_bms PRIVATE src)
 
 install(TARGETS kraftek_bms RUNTIME DESTINATION bin)

@@ -17,3 +17,9 @@
 
 ## 0.4
 - Professional dark industrial Qt6 MVC HMI prototype for 48 V / 4 × 12 V 180 Ah lead-acid cranking bank.
+
+## RXN protocol layer
+- Added a read-only RXN BMS v2 RS-485/UART transport using Qt SerialPort.
+- Added command framing, bank selection, register read helpers, ACK decoding and response timeout handling.
+- Preserved simulation as the default data source; no live connection or write operation is activated.
+- Documented protocol ambiguities, register map and hardware validation requirements.

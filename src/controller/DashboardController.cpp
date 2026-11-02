@@ -7,7 +7,13 @@ DashboardController::DashboardController(BatteryModel *model, std::unique_ptr<IB
 void DashboardController::refresh() {
     const auto readings = source_->readBatteries();
     model_->setReadings(readings);
-    const BankStatus s = source_->readBankStatus();
+    BankStatus s = source_->readBankStatus();
+    const BatteryHealthSummary health = BatteryHealthCalculator::calculate(readings);
+    if (health.available)
+        s.sohPct = health.bankSohPct;
+    emit batteryHealthChanged(health.available, health.bankSohPct,
+        health.weakestBatteryId, health.weakestSohPct, health.weakestVoltageV,
+        health.weakestTemperatureC, health.validBatteryCount, health.invalidBatteryCount);
     const QString scenario = source_->demoScenario();
     const DiagnosticResult d = diagnostics_.evaluate(readings, s);
     qint64 snapshotId = -1;
@@ -24,10 +30,13 @@ void DashboardController::refresh() {
         database_.logEvent(QStringLiteral("INFO"), QStringLiteral("SYNTHETIC_AI_ADVISORY"), d.summary, QStringLiteral("SyntheticDemo").append(QStringLiteral("/")).append(d.mlClass));
         lastLoggedDiagnostic_ = diagnosticKey;
     } else if (d.findings.isEmpty() && d.mlClass == QStringLiteral("NORMAL")) { lastLoggedDiagnostic_.clear(); }
-    emit bankMetricsChanged(s.voltageV, s.currentA, s.socPct, s.sohPct,
+    emit bankMetricsChanged(s.voltageV, s.currentA, s.socPct, health.available ? health.bankSohPct : s.sohPct,
                             s.systemState, s.dataFresh, s.mode);
 }
 
 void DashboardController::setDisplayMode(const QString &mode) { Q_UNUSED(mode); refresh(); }
-void DashboardController::setDemoScenario(const QString &scenario) { source_->setDemoScenario(scenario); refresh(); }
-void DashboardController::setAutomaticCycle(bool enabled) { source_->setAutomaticCycle(enabled); }
+void DashboardController::setDemoScenario(const QString &scenario) { if (source_) { source_->setDemoScenario(scenario); refresh(); } }
+void DashboardController::setAutomaticCycle(bool enabled) { automaticCycle_ = enabled; if (source_) source_->setAutomaticCycle(enabled); }
+QList<HistoricalReading> DashboardController::queryHistory(const QDateTime &startUtc, const QDateTime &endUtc, int batteryId) {
+    return database_.queryHistory(startUtc, endUtc, batteryId);
+}

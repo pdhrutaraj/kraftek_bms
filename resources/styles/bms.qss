@@ -6,7 +6,8 @@ QLabel#brandName { color: #f1f6fb; font-size: 20px; font-weight: 800; letter-spa
 QLabel#brandSub { color: #7f96a9; font-size: 9px; letter-spacing: 1.4px; }
 QFrame#topSeparator { background: #314251; }
 QLabel#screenTitle { color: #e8f0f7; font-size: 13px; font-weight: 700; letter-spacing: 1px; }
-QLabel#screenSubtitle, QLabel#microLabel, QLabel#metricEyebrow, QLabel#sectionMeta, QLabel#sideSection { color: #8499ab; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; }
+QLabel#screenSubtitle, QLabel#microLabel, QLabel#sectionMeta, QLabel#sideSection { color: #8499ab; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; }
+QLabel#metricEyebrow { color: #a8bac9; font-size: 12px; font-weight: 750; letter-spacing: .5px; }
 QLabel#linkPill { color: #f2c76d; background: #332b1c; border: 1px solid #62502c; border-radius: 5px; padding: 6px 9px; font-size: 10px; font-weight: 700; }
 QLabel#linkPillBad { color: #ff8795; background: #3c2027; border: 1px solid #7c3944; border-radius: 5px; padding: 6px 9px; font-size: 10px; font-weight: 700; }
 QLabel#clockValue { color: #d5e0e9; font-size: 12px; font-weight: 600; }
@@ -23,8 +24,8 @@ QLabel#pageHeading { color: #edf4fa; font-size: 24px; font-weight: 750; }
 QLabel#pageDescription { color: #8ea1b1; font-size: 11px; }
 QLabel#statePill { color: #5de0ba; background: #14332e; border: 1px solid #28695d; border-radius: 5px; padding: 8px 13px; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
 QFrame#metricCard, QFrame#batteryCard, QFrame#panel { background: #111b25; border: 1px solid #263746; border-radius: 8px; }
-QLabel#metricValue { color: #f0f6fb; font-size: 29px; font-weight: 750; }
-QLabel#metricUnit { color: #8499aa; font-size: 11px; padding-bottom: 4px; }
+QLabel#metricValue { color: #f0f6fb; font-size: 27px; font-weight: 750; }
+QLabel#metricUnit { color: #a9bac8; font-size: 13px; padding-bottom: 4px; }
 QLabel#sectionHeading, QLabel#panelHeading { color: #dce7ef; font-size: 12px; font-weight: 800; letter-spacing: .8px; }
 QLabel#batteryName { color: #a7bac9; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
 QLabel#statusOnline { color: #55d8b1; font-size: 9px; font-weight: 800; }
@@ -48,3 +49,11 @@ QLabel#footerWarning { color: #d9b55e; font-size: 9px; font-weight: 800; letter-
 QScrollBar:vertical { background: #101923; width: 10px; margin: 0; }
 QScrollBar::handle:vertical { background: #354858; min-height: 22px; border-radius: 4px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+
+QProgressBar#sohBar { background: #263746; border: 0; border-radius: 3px; }
+QProgressBar#sohBar::chunk { background: #8c7cf0; border-radius: 3px; }
+QDateTimeEdit, QComboBox, QPushButton { min-height: 28px; }
+QDateTimeEdit { color: #dce7ef; background: #17232f; border: 1px solid #344757; border-radius: 5px; padding: 4px 6px; }
+QPushButton { color: #e7eef5; background: #172b38; border: 1px solid #344757; border-radius: 5px; padding: 7px 10px; }
+QPushButton:hover { background: #21403f; }
+QScrollArea { border: 0; background: transparent; }
