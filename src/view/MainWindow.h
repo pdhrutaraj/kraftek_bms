@@ -41,6 +41,8 @@ private:
     QWidget *makeSystemPage();
     QWidget *makeAiDemoPage();
     QWidget *makeTrendPage();
+    QWidget *makeRs485DiagnosticsPage();
+    void refreshRs485Diagnostics();
     void updateAiDemo(const QString &scenario, const QString &mlClass, double mlScore, const QString &summary);
     void updateResponsiveLayout();
     void loadHistory();
@@ -96,4 +98,8 @@ private:
     QComboBox *historyScope_ = nullptr;
     QComboBox *historyMetric_ = nullptr;
     QLabel *historySummary_ = nullptr;
+    QLabel *rs485StatusValue_ = nullptr;
+    QLabel *rs485PortValue_ = nullptr;
+    QLabel *rs485MetadataValue_ = nullptr;
+    QLabel *rs485SettingsValue_ = nullptr;
 };

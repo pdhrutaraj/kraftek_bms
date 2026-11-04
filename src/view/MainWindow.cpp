@@ -30,6 +30,8 @@
 #include <QScreen>
 #include <QGuiApplication>
 #include <QResizeEvent>
+#include <QSerialPortInfo>
+#include <QStringList>
 #include <QScrollArea>
 #include <QSizePolicy>
 #include <QPainterPath>
@@ -169,9 +171,9 @@ MainWindow::MainWindow(BatteryModel *model, DashboardController *controller, QWi
     auto *sidebar = new QFrame; sidebar_ = sidebar; sidebar->setObjectName("sidebar"); sidebar->setMinimumWidth(68); sidebar->setMaximumWidth(218); sidebar->setFixedWidth(218);
     auto *side = new QVBoxLayout(sidebar); side->setContentsMargins(14,22,14,18); side->setSpacing(8);
     sideSectionLabel_ = label("WORKSPACE", "sideSection"); side->addWidget(sideSectionLabel_);
-    const QString navNames[] = {"OVERVIEW", "BATTERY DETAILS", "ALARMS & EVENTS", "SYSTEM STATUS", "HISTORICAL TRENDS", "AI DEMO"};
-    const QString navShort[] = {"HOME", "BATTERIES", "EVENTS", "SYSTEM", "TRENDS", "AI"};
-    for (int i = 0; i < 6; ++i) {
+    const QString navNames[] = {"OVERVIEW", "BATTERY DETAILS", "ALARMS & EVENTS", "SYSTEM STATUS", "HISTORICAL TRENDS", "AI DEMO", "RS-485 DIAGNOSTICS"};
+    const QString navShort[] = {"HOME", "BATTERIES", "EVENTS", "SYSTEM", "TRENDS", "AI", "RS-485"};
+    for (int i = 0; i < 7; ++i) {
         auto *btn = new QPushButton(navNames[i]); btn->setObjectName(i == 0 ? "navButtonActive" : "navButton");
         btn->setCheckable(true); btn->setProperty("pageIndex", i); btn->setProperty("fullText", navNames[i]); btn->setProperty("shortText", navShort[i]); navButtons_.append(btn); if (i == 0) btn->setChecked(true);
         side->addWidget(btn); connect(btn, &QPushButton::clicked, this, [this, i, sidebar, btn]() {
@@ -202,6 +204,7 @@ MainWindow::MainWindow(BatteryModel *model, DashboardController *controller, QWi
     addScrollablePage(makeSystemPage());
     addScrollablePage(makeTrendPage());
     addScrollablePage(makeAiDemoPage());
+    addScrollablePage(makeRs485DiagnosticsPage());
     bodyLayout->addWidget(pages_, 1); outer->addWidget(body, 1);
 
     auto *footer = new QFrame; footer->setObjectName("footerBar"); footer->setFixedHeight(32);
@@ -458,6 +461,140 @@ QWidget *MainWindow::makeSystemPage() {
     const QStringList states={"SIMULATOR ACTIVE","INITIALIZING DATABASE…","NOT INTEGRATED","NOT VALIDATED","INITIALIZING DIAGNOSTICS…","NOT CONNECTED"};
     for(int i=0;i<names.size();++i){auto *c=panel();auto *cl=new QVBoxLayout(c);cl->setContentsMargins(18,16,18,16);cl->addWidget(label(names[i],"metricEyebrow"));auto *v=label(states[i],"systemStateValue");v->setWordWrap(true);if(i==1)databaseStatusValue_=v;if(i==4)diagnosticStatusValue_=v;cl->addWidget(v);grid->addWidget(c,i/2,i%2);} l->addLayout(grid);
     auto *warning=panel();auto *wl=new QVBoxLayout(warning);wl->setContentsMargins(18,16,18,16);wl->addWidget(label("SAFETY / RELEASE GATE", "panelHeading"));auto *text=label("SQLite records HMI telemetry and diagnostic events. AI/ML diagnostics combine statistical heuristics with a lightweight classifier fitted only to synthetic demo samples; this is not validated against field data or safety-certified. Outputs are advisory only. Protection remains deterministic and local to the BMS hardware. This interface is a prototype visualization only; do not use it for operational battery control until sensing, protection, communications, fail-safe behavior and acceptance tests are independently verified.","pageDescription");text->setWordWrap(true);wl->addWidget(text);l->addWidget(warning);l->addStretch();return page;
+}
+
+
+QWidget *MainWindow::makeRs485DiagnosticsPage() {
+    auto *page = new QWidget;
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(24, 24, 24, 24);
+    layout->setSpacing(14);
+
+    auto *heading = label("RS-485 DIAGNOSTICS", "pageHeading");
+    layout->addWidget(heading);
+
+    auto *description = label(
+        "Passive USB-to-serial adapter discovery. This page does not communicate "
+        "with the RXN BMS or access the RS-485 bus.",
+        "pageDescription");
+    description->setWordWrap(true);
+    layout->addWidget(description);
+
+    auto *card = panel("panel");
+    auto *grid = new QGridLayout(card);
+    grid->setContentsMargins(18, 18, 18, 18);
+    grid->setHorizontalSpacing(20);
+    grid->setVerticalSpacing(14);
+
+    auto addRow = [grid](int row, const QString &caption, QLabel *value) {
+        auto *name = new QLabel(caption);
+        name->setWordWrap(true);
+        value->setWordWrap(true);
+        value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        grid->addWidget(name, row, 0, Qt::AlignTop);
+        grid->addWidget(value, row, 1);
+    };
+
+    rs485StatusValue_ = label("Not scanned", "metricValue");
+    rs485PortValue_ = label("Not scanned", "metricValue");
+    rs485MetadataValue_ = label("Not scanned", "metricValue");
+    rs485SettingsValue_ = label(
+        "Previously observed: 9600 baud, 8 data bits, no parity, 1 stop bit (8N1). "
+        "This is not a live BMS protocol verification.",
+        "metricValue");
+
+    addRow(0, "SERIAL INTERFACE DISCOVERY", rs485StatusValue_);
+    addRow(1, "PORT / SYSTEM LOCATION", rs485PortValue_);
+    addRow(2, "USB ADAPTER METADATA", rs485MetadataValue_);
+    addRow(3, "PREVIOUSLY OBSERVED SERIAL SETTINGS", rs485SettingsValue_);
+
+    layout->addWidget(card);
+
+    auto *safetyCard = panel("panel");
+    auto *safetyLayout = new QVBoxLayout(safetyCard);
+    safetyLayout->setContentsMargins(18, 18, 18, 18);
+    safetyLayout->setSpacing(8);
+
+    auto *safetyHeading = label("COMMUNICATION SAFETY", "panelHeading");
+    safetyLayout->addWidget(safetyHeading);
+
+    auto *safetyText = label(
+        "TX: DISABLED — no bytes are transmitted.\n"
+        "RX: DISABLED — no serial data is read.\n"
+        "BMS: NOT CONNECTED — adapter discovery only.\n"
+        "No serial port is opened by this diagnostics page.",
+        "pageDescription");
+    safetyText->setWordWrap(true);
+    safetyLayout->addWidget(safetyText);
+    layout->addWidget(safetyCard);
+
+    auto *refreshButton = new QPushButton("REFRESH ADAPTER DISCOVERY");
+    refreshButton->setMinimumHeight(40);
+    layout->addWidget(refreshButton);
+
+    connect(refreshButton, &QPushButton::clicked,
+            this, &MainWindow::refreshRs485Diagnostics);
+
+    layout->addStretch();
+
+    refreshRs485Diagnostics();
+    return page;
+}
+
+void MainWindow::refreshRs485Diagnostics() {
+    // Passive enumeration only. Do not open, read, or write any serial port.
+    const QList<QSerialPortInfo> ports = QSerialPortInfo::availablePorts();
+
+    if (ports.isEmpty()) {
+        rs485StatusValue_->setText("No serial interfaces detected.");
+        rs485PortValue_->setText("No ports reported by the operating system.");
+        rs485MetadataValue_->setText("Unavailable");
+        return;
+    }
+
+    QStringList portDescriptions;
+    QStringList metadataDescriptions;
+
+    for (const QSerialPortInfo &info : ports) {
+        portDescriptions.append(
+            QStringLiteral("%1  (%2)")
+                .arg(info.portName(), info.systemLocation()));
+
+        QStringList details;
+
+        if (!info.description().trimmed().isEmpty())
+            details.append("Description: " + info.description());
+
+        if (!info.manufacturer().trimmed().isEmpty())
+            details.append("Manufacturer: " + info.manufacturer());
+
+        if (!info.serialNumber().trimmed().isEmpty())
+            details.append("Serial number: " + info.serialNumber());
+
+        if (info.hasVendorIdentifier()) {
+            details.append(
+                QStringLiteral("VID: 0x%1")
+                    .arg(info.vendorIdentifier(), 4, 16, QLatin1Char('0')).toUpper());
+        }
+
+        if (info.hasProductIdentifier()) {
+            details.append(
+                QStringLiteral("PID: 0x%1")
+                    .arg(info.productIdentifier(), 4, 16, QLatin1Char('0')).toUpper());
+        }
+
+        metadataDescriptions.append(
+            info.portName() + ": " +
+            (details.isEmpty() ? QStringLiteral("No additional metadata") :
+                                 details.join(" | ")));
+    }
+
+    rs485StatusValue_->setText(
+        QStringLiteral("%1 serial interface(s) detected. No communication performed.")
+            .arg(ports.size()));
+
+    rs485PortValue_->setText(portDescriptions.join("\n"));
+    rs485MetadataValue_->setText(metadataDescriptions.join("\n"));
 }
 
 void MainWindow::showPage(int page) { if (pages_ && page >= 0 && page < pages_->count()) pages_->setCurrentIndex(page); }
