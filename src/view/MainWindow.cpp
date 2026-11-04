@@ -467,28 +467,32 @@ QWidget *MainWindow::makeSystemPage() {
 QWidget *MainWindow::makeRs485DiagnosticsPage() {
     auto *page = new QWidget;
     auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(24, 24, 24, 24);
-    layout->setSpacing(14);
+    layout->setContentsMargins(14, 12, 14, 12);
+    layout->setSpacing(7);
 
     auto *heading = label("RS-485 DIAGNOSTICS", "pageHeading");
+    heading->setStyleSheet("font-size: 20px;");
     layout->addWidget(heading);
 
     auto *description = label(
         "Passive USB-to-serial adapter discovery. This page does not communicate "
         "with the RXN BMS or access the RS-485 bus.",
         "pageDescription");
+    description->setStyleSheet("font-size: 11px;");
     description->setWordWrap(true);
     layout->addWidget(description);
 
     auto *card = panel("panel");
     auto *grid = new QGridLayout(card);
-    grid->setContentsMargins(18, 18, 18, 18);
-    grid->setHorizontalSpacing(20);
-    grid->setVerticalSpacing(14);
+    grid->setContentsMargins(12, 10, 12, 10);
+    grid->setHorizontalSpacing(12);
+    grid->setVerticalSpacing(7);
 
     auto addRow = [grid](int row, const QString &caption, QLabel *value) {
         auto *name = new QLabel(caption);
+        name->setStyleSheet("font-size: 10px;");
         name->setWordWrap(true);
+        value->setStyleSheet("font-size: 11px;");
         value->setWordWrap(true);
         value->setTextInteractionFlags(Qt::TextSelectableByMouse);
         grid->addWidget(name, row, 0, Qt::AlignTop);
@@ -498,6 +502,7 @@ QWidget *MainWindow::makeRs485DiagnosticsPage() {
     rs485StatusValue_ = label("Not scanned", "metricValue");
     rs485PortValue_ = label("Not scanned", "metricValue");
     rs485MetadataValue_ = label("Not scanned", "metricValue");
+    rs485MetadataValue_->setStyleSheet("font-size: 10px;");
     rs485SettingsValue_ = label(
         "Previously observed: 9600 baud, 8 data bits, no parity, 1 stop bit (8N1). "
         "This is not a live BMS protocol verification.",
@@ -512,10 +517,11 @@ QWidget *MainWindow::makeRs485DiagnosticsPage() {
 
     auto *safetyCard = panel("panel");
     auto *safetyLayout = new QVBoxLayout(safetyCard);
-    safetyLayout->setContentsMargins(18, 18, 18, 18);
-    safetyLayout->setSpacing(8);
+    safetyLayout->setContentsMargins(12, 10, 12, 10);
+    safetyLayout->setSpacing(5);
 
     auto *safetyHeading = label("COMMUNICATION SAFETY", "panelHeading");
+    safetyHeading->setStyleSheet("font-size: 13px;");
     safetyLayout->addWidget(safetyHeading);
 
     auto *safetyText = label(
@@ -524,12 +530,14 @@ QWidget *MainWindow::makeRs485DiagnosticsPage() {
         "BMS: NOT CONNECTED — adapter discovery only.\n"
         "No serial port is opened by this diagnostics page.",
         "pageDescription");
+    safetyText->setStyleSheet("font-size: 11px;");
     safetyText->setWordWrap(true);
     safetyLayout->addWidget(safetyText);
     layout->addWidget(safetyCard);
 
     auto *refreshButton = new QPushButton("REFRESH ADAPTER DISCOVERY");
-    refreshButton->setMinimumHeight(40);
+    refreshButton->setMinimumHeight(32);
+    refreshButton->setStyleSheet("font-size: 11px; padding: 4px 10px;");
     layout->addWidget(refreshButton);
 
     connect(refreshButton, &QPushButton::clicked,
