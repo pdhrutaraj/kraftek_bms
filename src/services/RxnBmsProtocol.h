@@ -1,12 +1,13 @@
 #pragma once
 
+#include <QObject>
+#include "RxnBmsTransport.h"
+
 #include <QByteArray>
-#include <QSerialPort>
 #include <QString>
 #include <QVector>
+#include <memory>
 
-// RXN Electric BMS Communication Protocol v2 (April 2024).
-// This driver intentionally exposes raw register words and read-only transactions.
 class RxnBmsProtocol final {
 public:
     enum class Bank : quint8 {
@@ -28,11 +29,16 @@ public:
     struct Result {
         bool ok = false;
         Ack ack = Ack::Success;
-        QByteArray data;       // Raw register bytes, MSB first; scaling is not applied.
+        QByteArray data;
         QString error;
     };
 
+    // Normal production constructor: uses QSerialPort transport.
     explicit RxnBmsProtocol(QObject *parent = nullptr);
+
+    // Injection constructor: intended for isolated tests.
+    explicit RxnBmsProtocol(std::unique_ptr<RxnBmsTransport> transport);
+
     ~RxnBmsProtocol();
 
     bool open(const QString &portName, QString *error = nullptr);
@@ -40,7 +46,6 @@ public:
     bool isOpen() const;
     QString portName() const;
 
-    // Safe API: only read commands are exposed. One register word = two response data bytes.
     Result readRegister(Bank bank, quint16 address, int responseDataBytes = 2);
     Result readRealTimeRegister(quint16 address, int responseDataBytes = 2);
     QVector<Result> readRealTimeRegisters(const QVector<quint16> &addresses);
@@ -48,7 +53,6 @@ public:
     static QByteArray makeReadCommand(Bank bank, quint16 address);
     static QString ackDescription(quint8 value);
 
-    // Register addresses explicitly listed in protocol v2. Values are raw uint16 words.
     static constexpr quint16 RegSsrStatus = 0;
     static constexpr quint16 RegBatteryVoltage = 15;
     static constexpr quint16 RegBatterySoc = 18;
@@ -63,7 +67,11 @@ public:
 private:
     Result transactRead(Bank bank, quint16 address, int responseDataBytes);
     bool readExact(int count, QByteArray *out, QString *error);
-    QSerialPort serial_;
+
+    std::unique_ptr<RxnBmsTransport> transport_;
+
     int timeoutMs_ = 50;
-    static constexpr quint8 ProtocolChecksumByte = 85; // Document prints "85"; interpretation requires vendor confirmation.
+
+    // Current implementation assumption; vendor confirmation is pending.
+    static constexpr quint8 ProtocolChecksumByte = 85;
 };
