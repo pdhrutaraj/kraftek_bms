@@ -23,6 +23,8 @@ qt_add_executable(kraftek_bms
     src/services/TelemetryDatabase.h
     src/services/TelemetryDatabase.cpp
     src/services/BatteryHealthCalculator.h
+    src/services/AlarmEngine.h
+    src/services/AlarmEngine.cpp
     src/ai/DiagnosticEngine.h
     src/ai/DiagnosticEngine.cpp
     src/model/BatteryModel.h

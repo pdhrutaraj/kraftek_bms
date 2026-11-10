@@ -20,6 +20,6 @@ int main(int argc, char *argv[]) {
     auto source = std::make_unique<SimulatedDataSource>();
     DashboardController controller(&model, std::move(source));
     MainWindow window(&model, &controller);
-    window.show();
+    window.showFullScreen();
     return app.exec();
 }
