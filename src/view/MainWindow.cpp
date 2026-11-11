@@ -36,6 +36,10 @@
 #include <QSizePolicy>
 #include <QPainterPath>
 #include <QDateTime>
+#include <QApplication>
+#include <QMessageBox>
+#include <QProcess>
+#include <QProcessEnvironment>
 
 class TrendWidget final : public QWidget {
 public:
@@ -165,6 +169,199 @@ MainWindow::MainWindow(BatteryModel *model, DashboardController *controller, QWi
     clockBox->addWidget(label("LOCAL SYSTEM TIME", "microLabel"));
     clockValue_ = label("--:--:--", "clockValue"); clockBox->addWidget(clockValue_);
     topLayout->addWidget(clockBoxWidget_);
+    //
+    //topLayout->addWidget(clockBoxWidget_);
+
+// TX2 shutdown button
+auto *shutdownButton = new QPushButton(
+    QStringLiteral("SHUT DOWN TX2"), top);
+
+shutdownButton->setObjectName("shutdownButton");
+shutdownButton->setMinimumWidth(130);
+shutdownButton->setMinimumHeight(40);
+shutdownButton->setToolTip(
+    QStringLiteral("Safely shut down the Kraftek application and Jetson TX2 NX"));
+
+shutdownButton->setStyleSheet(
+    "QPushButton {"
+    " background-color: #a8323e;"
+    " color: white;"
+    " border: none;"
+    " border-radius: 6px;"
+    " padding: 8px 12px;"
+    " font-weight: bold;"
+    "}"
+    "QPushButton:hover { background-color: #c94350; }"
+    "QPushButton:pressed { background-color: #76232b; }"
+);
+
+topLayout->addWidget(shutdownButton);
+
+connect(shutdownButton, &QPushButton::clicked,
+        this, [this]() {
+
+    const auto answer = QMessageBox::warning(
+        this,
+        QStringLiteral("Confirm TX2 Shutdown"),
+        QStringLiteral(
+            "Are you sure you want to shut down "
+            "the Kraftek BMS application and Jetson TX2 NX?\n\n"
+            "Administrator authentication will be required."),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+
+    if (answer != QMessageBox::Yes)
+        return;
+
+    auto *process = new QProcess(this);
+
+    QProcessEnvironment env =
+        QProcessEnvironment::systemEnvironment();
+
+    env.insert(
+        QStringLiteral("SUDO_ASKPASS"),
+        QStringLiteral(
+            "/home/user/kraftek_bms/scripts/shutdown_askpass.sh")
+    );
+
+    process->setProcessEnvironment(env);
+
+    connect(process,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this,
+            [this, process](int exitCode,
+                            QProcess::ExitStatus exitStatus) {
+
+        const QString errorText =
+            QString::fromLocal8Bit(
+                process->readAllStandardError()).trimmed();
+
+        if (exitStatus == QProcess::NormalExit && exitCode == 0) {
+            QMessageBox::information(
+                this,
+                QStringLiteral("Shutdown Accepted"),
+                QStringLiteral(
+                    "The operating system accepted the shutdown request.\n"
+                    "The Jetson TX2 NX is powering off.")
+            );
+        } else {
+            QMessageBox::warning(
+                this,
+                QStringLiteral("Shutdown Cancelled or Failed"),
+                QStringLiteral(
+                    "The TX2 has not been shut down.\n\n"
+                    "%1")
+                    .arg(errorText.isEmpty()
+                         ? QStringLiteral("Authentication was cancelled, "
+                                           "or the shutdown command failed "
+                                           "(exit code %1).").arg(exitCode)
+                         : errorText)
+            );
+        }
+
+        process->deleteLater();
+    });
+
+    connect(process, &QProcess::errorOccurred,
+            this, [this, process](QProcess::ProcessError error) {
+
+        if (error == QProcess::FailedToStart) {
+            QMessageBox::critical(
+                this,
+                QStringLiteral("Shutdown Error"),
+                QStringLiteral(
+                    "Could not start sudo.\n"
+                    "Check that /usr/bin/sudo is available.")
+            );
+
+            process->deleteLater();
+        }
+    });
+
+    process->start(
+        QStringLiteral("/usr/bin/sudo"),
+        QStringList{
+            QStringLiteral("-k"),
+            QStringLiteral("-A"),
+            QStringLiteral("/bin/systemctl"),
+            QStringLiteral("poweroff")
+        }
+    );
+});
+
+/*
+connect(shutdownButton, &QPushButton::clicked,
+        this, [this]() {
+
+    const auto answer = QMessageBox::warning(
+        this,
+        QStringLiteral("Confirm TX2 Shutdown"),
+        QStringLiteral(
+            "Are you sure you want to shut down the Kraftek BMS "
+            "application and Jetson TX2 NX?\n\n"
+            "The system will power off."),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+
+    if (answer != QMessageBox::Yes)
+        return;
+
+    auto *process = new QProcess(this);
+
+    connect(process,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this,
+            [this, process](int exitCode,
+                            QProcess::ExitStatus exitStatus) {
+
+        const QString errorText =
+            QString::fromLocal8Bit(
+                process->readAllStandardError()).trimmed();
+
+        if (exitStatus == QProcess::NormalExit && exitCode == 0) {
+            QApplication::quit();
+        } else {
+            QMessageBox::critical(
+                this,
+                QStringLiteral("Shutdown Failed"),
+                QStringLiteral(
+                    "The operating system rejected the shutdown request.\n\n%1")
+                    .arg(errorText.isEmpty()
+                         ? QStringLiteral("systemctl returned exit code %1")
+                               .arg(exitCode)
+                         : errorText)
+            );
+        }
+
+        process->deleteLater();
+    });
+
+    connect(process, &QProcess::errorOccurred,
+            this, [this, process](QProcess::ProcessError error) {
+
+        if (error == QProcess::FailedToStart) {
+            QMessageBox::critical(
+                this,
+                QStringLiteral("Shutdown Error"),
+                QStringLiteral(
+                    "Could not start systemctl. "
+                    "Check that systemctl is installed and accessible.")
+            );
+
+            process->deleteLater();
+        }
+    });
+
+    process->start(
+        QStringLiteral("systemctl"),
+        QStringList{QStringLiteral("poweroff")}
+    );
+});
+*/
+//outer->addWidget(top);
+    //
     outer->addWidget(top);
 
     auto *body = new QWidget; auto *bodyLayout = new QHBoxLayout(body); bodyLayout->setContentsMargins(0,0,0,0); bodyLayout->setSpacing(0);

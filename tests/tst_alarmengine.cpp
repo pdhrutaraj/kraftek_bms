@@ -1,3 +1,4 @@
+
 #include <QtTest>
 #include <limits>
 
@@ -32,6 +33,13 @@ private slots:
     void staleBankDataDetected();
     void invalidBankMeasurementDetected();
     void alarmsClearAfterRecovery();
+
+    // Additional boundary and measurement tests.
+    void nonFiniteBatteryVoltageDetected();
+    void nonFiniteBatteryTemperatureDetected();
+    void sameBatteryCanHaveMultipleAlarms();
+    void customThresholdsAreApplied();
+    void nonFiniteBankCurrentDetected();
 };
 
 void AlarmEngineTest::normalBankHasNoAlarms()
@@ -176,6 +184,85 @@ void AlarmEngineTest::alarmsClearAfterRecovery()
     QVERIFY(recovered.isEmpty());
 }
 
+void AlarmEngineTest::nonFiniteBatteryVoltageDetected()
+{
+    AlarmEngine engine;
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+
+    const auto alarms = engine.evaluate(
+        {battery(1, nan, 25.0)},
+        BankStatus{});
+
+    QCOMPARE(alarms.size(), 1);
+    QCOMPARE(alarms.first().code, AlarmCode::BatterySensorFault);
+    QCOMPARE(alarms.first().batteryId, 1);
+}
+
+void AlarmEngineTest::nonFiniteBatteryTemperatureDetected()
+{
+    AlarmEngine engine;
+
+    const double infinity = std::numeric_limits<double>::infinity();
+
+    const auto alarms = engine.evaluate(
+        {battery(2, 12.6, infinity)},
+        BankStatus{});
+
+    QCOMPARE(alarms.size(), 1);
+    QCOMPARE(alarms.first().code, AlarmCode::BatterySensorFault);
+    QCOMPARE(alarms.first().batteryId, 2);
+}
+
+void AlarmEngineTest::sameBatteryCanHaveMultipleAlarms()
+{
+    AlarmEngine engine;
+
+    const auto alarms = engine.evaluate(
+        {battery(3, 11.0, 46.0)},
+        BankStatus{});
+
+    QCOMPARE(alarms.size(), 2);
+
+    QCOMPARE(alarms.at(0).code, AlarmCode::BatteryUndervoltage);
+    QCOMPARE(alarms.at(0).batteryId, 3);
+
+    QCOMPARE(alarms.at(1).code, AlarmCode::BatteryOvertemperature);
+    QCOMPARE(alarms.at(1).batteryId, 3);
+}
+
+void AlarmEngineTest::customThresholdsAreApplied()
+{
+    AlarmEngineConfig config;
+    config.undervoltageThresholdV = 12.0;
+    config.overtemperatureThresholdC = 40.0;
+
+    AlarmEngine engine(config);
+
+    const auto alarms = engine.evaluate(
+        {battery(1, 11.9, 40.1)},
+        BankStatus{});
+
+    QCOMPARE(alarms.size(), 2);
+    QCOMPARE(alarms.at(0).code, AlarmCode::BatteryUndervoltage);
+    QCOMPARE(alarms.at(1).code, AlarmCode::BatteryOvertemperature);
+}
+
+void AlarmEngineTest::nonFiniteBankCurrentDetected()
+{
+    AlarmEngine engine;
+
+    BankStatus bank;
+    bank.currentA = std::numeric_limits<double>::infinity();
+
+    const auto alarms = engine.evaluate({}, bank);
+
+    QCOMPARE(alarms.size(), 1);
+    QCOMPARE(alarms.first().code,
+             AlarmCode::InvalidBankMeasurement);
+}
+
 QTEST_GUILESS_MAIN(AlarmEngineTest)
 
 #include "tst_alarmengine.moc"
+
