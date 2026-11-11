@@ -25,7 +25,7 @@ bool TelemetryDatabase::initialize() {
     QSqlQuery q(db_);
     const QStringList statements = {
         QStringLiteral("PRAGMA foreign_keys=ON"),
-        QStringLiteral("CREATE TABLE IF NOT EXISTS telemetry (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp_utc TEXT NOT NULL, bank_voltage_v REAL NOT NULL, bank_current_a REAL NOT NULL, soc_pct REAL, soh_pct REAL, mode TEXT NOT NULL, system_state TEXT NOT NULL, data_quality TEXT NOT NULL, scenario_label TEXT NOT NULL DEFAULT 'Normal')"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS telemetry (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp_utc TEXT NOT NULL, data_source TEXT NOT NULL DEFAULT 'SIMULATOR', bank_voltage_v REAL NOT NULL, bank_current_a REAL NOT NULL, soc_pct REAL, soh_pct REAL, mode TEXT NOT NULL, system_state TEXT NOT NULL, data_quality TEXT NOT NULL, scenario_label TEXT NOT NULL DEFAULT 'Normal')"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS block_readings (id INTEGER PRIMARY KEY AUTOINCREMENT, telemetry_id INTEGER NOT NULL REFERENCES telemetry(id) ON DELETE CASCADE, block_id INTEGER NOT NULL CHECK(block_id BETWEEN 1 AND 4), voltage_v REAL NOT NULL, temperature_c REAL, soc_pct REAL, soh_pct REAL, sensor_valid INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp_utc TEXT NOT NULL, severity TEXT NOT NULL, event_code TEXT NOT NULL, message TEXT NOT NULL, source TEXT NOT NULL, acknowledged INTEGER NOT NULL DEFAULT 0)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS configuration_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp_utc TEXT NOT NULL, operator_id TEXT, parameter_key TEXT NOT NULL, old_value TEXT, new_value TEXT, result TEXT NOT NULL, reason TEXT)"),
@@ -39,17 +39,32 @@ bool TelemetryDatabase::initialize() {
     if (!q.exec(QStringLiteral("PRAGMA table_info(telemetry)"))) { lastError_ = q.lastError().text(); return false; }
     while (q.next()) if (q.value(1).toString() == QStringLiteral("scenario_label")) hasScenario = true;
     if (!hasScenario && !q.exec(QStringLiteral("ALTER TABLE telemetry ADD COLUMN scenario_label TEXT NOT NULL DEFAULT 'Normal'"))) { lastError_ = q.lastError().text(); return false; }
+
+    // Backward-compatible migration for source identity.
+    bool hasDataSource = false;
+    if (!q.exec(QStringLiteral("PRAGMA table_info(telemetry)"))) { lastError_ = q.lastError().text(); return false; }
+    while (q.next()) if (q.value(1).toString() == QStringLiteral("data_source")) hasDataSource = true;
+    if (!hasDataSource && !q.exec(QStringLiteral("ALTER TABLE telemetry ADD COLUMN data_source TEXT NOT NULL DEFAULT 'SIMULATOR'"))) { lastError_ = q.lastError().text(); return false; }
+
     return true;
 }
 
 bool TelemetryDatabase::saveSnapshot(const QList<BatteryReading> &readings, const BankStatus &bank,
-                                     const QString &quality, const QString &scenario, qint64 *snapshotId) {
+                                     const QString &dataSource, const QString &quality, const QString &scenario, qint64 *snapshotId) {
     if (!ready_) return false;
     if (!db_.transaction()) { lastError_ = db_.lastError().text(); return false; }
     QSqlQuery q(db_);
-    q.prepare(QStringLiteral("INSERT INTO telemetry(timestamp_utc,bank_voltage_v,bank_current_a,soc_pct,soh_pct,mode,system_state,data_quality,scenario_label) VALUES(?,?,?,?,?,?,?,?,?)"));
-    q.addBindValue(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)); q.addBindValue(bank.voltageV); q.addBindValue(bank.currentA);
-    q.addBindValue(bank.socPct); q.addBindValue(bank.sohPct); q.addBindValue(bank.mode); q.addBindValue(bank.systemState); q.addBindValue(quality); q.addBindValue(scenario);
+    q.prepare(QStringLiteral("INSERT INTO telemetry(timestamp_utc,data_source,bank_voltage_v,bank_current_a,soc_pct,soh_pct,mode,system_state,data_quality,scenario_label) VALUES(?,?,?,?,?,?,?,?,?,?)"));
+    q.addBindValue(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+    q.addBindValue(dataSource);
+    q.addBindValue(bank.voltageV);
+    q.addBindValue(bank.currentA);
+    q.addBindValue(bank.socPct);
+    q.addBindValue(bank.sohPct);
+    q.addBindValue(bank.mode);
+    q.addBindValue(bank.systemState);
+    q.addBindValue(quality);
+    q.addBindValue(scenario);
     if (!q.exec()) { lastError_ = q.lastError().text(); db_.rollback(); return false; }
     const qint64 id = q.lastInsertId().toLongLong();
     QSqlQuery b(db_); b.prepare(QStringLiteral("INSERT INTO block_readings(telemetry_id,block_id,voltage_v,temperature_c,soc_pct,soh_pct,sensor_valid) VALUES(?,?,?,?,?,?,?)"));
@@ -84,7 +99,7 @@ QList<HistoricalReading> TelemetryDatabase::queryHistory(const QDateTime &startU
 
     QSqlQuery q(db_);
     q.prepare(QStringLiteral(
-        "SELECT t.timestamp_utc,t.bank_voltage_v,t.bank_current_a,t.soc_pct,t.soh_pct,"
+        "SELECT t.timestamp_utc,t.data_source,t.bank_voltage_v,t.bank_current_a,t.soc_pct,t.soh_pct,"
         "b.block_id,b.voltage_v,b.temperature_c,b.soc_pct,b.soh_pct,b.sensor_valid "
         "FROM telemetry t LEFT JOIN block_readings b ON b.telemetry_id=t.id "
         "AND (?<>0 AND b.block_id=?) "
@@ -104,16 +119,17 @@ QList<HistoricalReading> TelemetryDatabase::queryHistory(const QDateTime &startU
         r.timestampUtc = QDateTime::fromString(q.value(0).toString(), Qt::ISODateWithMs);
         if (!r.timestampUtc.isValid())
             r.timestampUtc = QDateTime::fromString(q.value(0).toString(), Qt::ISODate).toUTC();
-        r.bankVoltageV = q.value(1).toDouble();
-        r.bankCurrentA = q.value(2).toDouble();
-        r.bankSocPct = q.value(3).toDouble();
-        r.bankSohPct = q.value(4).toDouble();
-        r.batteryId = q.value(5).isNull() ? 0 : q.value(5).toInt();
-        r.batteryVoltageV = q.value(6).toDouble();
-        r.batteryTemperatureC = q.value(7).toDouble();
-        r.batterySocPct = q.value(8).toDouble();
-        r.batterySohPct = q.value(9).toDouble();
-        r.sensorValid = q.value(10).toInt() != 0;
+        r.dataSource = q.value(1).toString();
+        r.bankVoltageV = q.value(2).toDouble();
+        r.bankCurrentA = q.value(3).toDouble();
+        r.bankSocPct = q.value(4).toDouble();
+        r.bankSohPct = q.value(5).toDouble();
+        r.batteryId = q.value(6).isNull() ? 0 : q.value(6).toInt();
+        r.batteryVoltageV = q.value(7).toDouble();
+        r.batteryTemperatureC = q.value(8).toDouble();
+        r.batterySocPct = q.value(9).toDouble();
+        r.batterySohPct = q.value(10).toDouble();
+        r.sensorValid = q.value(11).toInt() != 0;
         rows.push_back(r);
     }
     return rows;

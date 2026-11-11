@@ -10,28 +10,40 @@
 class DashboardController final : public QObject {
     Q_OBJECT
 public:
-    DashboardController(BatteryModel *model, std::unique_ptr<IBatteryDataSource> source, QObject *parent = nullptr);
+    DashboardController(BatteryModel *model,
+                       std::unique_ptr<IBatteryDataSource> source,
+                       QObject *parent = nullptr);
+
     void refresh();
-    QList<HistoricalReading> queryHistory(const QDateTime &startUtc, const QDateTime &endUtc, int batteryId = 0);
+    QString sourceId() const;
+    QList<HistoricalReading> queryHistory(const QDateTime &startUtc,
+                                          const QDateTime &endUtc,
+                                          int batteryId = 0);
+
 public slots:
     void setDisplayMode(const QString &mode);
     void setDemoScenario(const QString &scenario);
     void setAutomaticCycle(bool enabled);
+
 signals:
     void bankMetricsChanged(double voltageV, double currentA, double socPct, double sohPct,
                             const QString &systemState, bool dataFresh, const QString &mode);
     void displayModeChanged(const QString &mode);
     void batteryHealthChanged(bool available, double bankSohPct, int weakestBatteryId,
-                              double weakestSohPct, double weakestVoltageV, double weakestTemperatureC,
-                              int validBatteryCount, int invalidBatteryCount);
+                              double weakestSohPct, double weakestVoltageV,
+                              double weakestTemperatureC, int validBatteryCount,
+                              int invalidBatteryCount);
     void databaseStatusChanged(const QString &status);
     void diagnosticsChanged(const QString &status, const QString &summary, double anomalyScore);
-    void aiDemoChanged(const QString &scenario, const QString &mlClass, double mlScore, const QString &summary);
+    void aiDemoChanged(const QString &scenario, const QString &mlClass,
+                       double mlScore, const QString &summary);
+
 private:
     BatteryModel *model_;
     std::unique_ptr<IBatteryDataSource> source_;
     TelemetryDatabase database_;
     DiagnosticEngine diagnostics_;
     QString lastLoggedDiagnostic_;
+    QString lastAcquisitionState_;
     bool automaticCycle_ = false;
 };

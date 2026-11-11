@@ -8,6 +8,7 @@
 
 struct HistoricalReading {
     QDateTime timestampUtc;
+    QString dataSource;
     double bankVoltageV = 0.0;
     double bankCurrentA = 0.0;
     double bankSocPct = 0.0;
@@ -29,7 +30,8 @@ public:
     QString databasePath() const { return path_; }
     QString lastError() const { return lastError_; }
     bool saveSnapshot(const QList<BatteryReading> &readings, const BankStatus &bank,
-                      const QString &quality, const QString &scenario, qint64 *snapshotId = nullptr);
+                      const QString &dataSource, const QString &quality,
+                      const QString &scenario, qint64 *snapshotId = nullptr);
     QList<HistoricalReading> queryHistory(const QDateTime &startUtc, const QDateTime &endUtc, int batteryId = 0);
     bool saveDiagnostic(qint64 snapshotId, const QString &scenario, const QString &status,
                         const QString &summary, const QString &mlClass, double statisticalScore, double mlScore);
