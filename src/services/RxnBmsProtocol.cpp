@@ -65,6 +65,13 @@ public:
         return serial_.waitForReadyRead(timeoutMs);
     }
 
+    bool hasReadError() const override {
+        const auto error = serial_.error();
+
+        return error != QSerialPort::NoError
+            && error != QSerialPort::TimeoutError;
+    }
+
     QByteArray read(qint64 maxSize) override {
         return serial_.read(maxSize);
     }
@@ -162,6 +169,15 @@ bool RxnBmsProtocol::readExact(
                 qMax(1, timeoutMs_ - static_cast<int>(timer->elapsed()));
 
             if (!transport_->waitForReadyRead(remaining)) {
+                if (transport_->hasReadError()) {
+                    if (error) {
+                        *error = QStringLiteral(
+                            "Transport read error: %1")
+                            .arg(transport_->errorString());
+                    }
+                    return false;
+                }
+
                 continue;
             }
         }

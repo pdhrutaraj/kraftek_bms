@@ -21,6 +21,7 @@ public:
     virtual bool waitForBytesWritten(int timeoutMs) = 0;
     virtual qint64 bytesAvailable() const = 0;
     virtual bool waitForReadyRead(int timeoutMs) = 0;
+    virtual bool hasReadError() const = 0;
     virtual QByteArray read(qint64 maxSize) = 0;
 
     virtual QString errorString() const = 0;

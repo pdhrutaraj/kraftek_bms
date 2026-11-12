@@ -76,11 +76,19 @@ public:
         Q_UNUSED(timeoutMs);
         ++waitForReadyReadCalls;
 
+        if (readWaitError) {
+            return false;
+        }
+
         if (available_.isEmpty() && !pendingChunks_.isEmpty()) {
             available_ = pendingChunks_.dequeue();
         }
 
         return !available_.isEmpty();
+    }
+
+    bool hasReadError() const override {
+        return readWaitError;
     }
 
     QByteArray read(qint64 maxSize) override {
@@ -130,6 +138,7 @@ public:
     int waitForReadyReadCalls = 0;
     int readCalls = 0;
     bool readReturnsEmptyWhenDataAvailable = false;
+    bool readWaitError = false;
 
 private:
     bool open_ = false;
@@ -152,6 +161,7 @@ private slots:
     void testChecksumMismatch();
     void testIncompleteResponseTimeout();
     void testNoResponseTimeout();
+    void testImmediateReadTransportError();
     void testReadMakesNoProgress();
     void testZeroLengthReadResponse();
     void testPartialCommandWriteFails();
@@ -341,6 +351,30 @@ void RxnBmsProtocolTest::testNoResponseTimeout() {
 
     QVERIFY(result.error.contains(
         QStringLiteral("received 0 of 1 bytes")));
+}
+
+
+void RxnBmsProtocolTest::testImmediateReadTransportError() {
+    auto fake = std::make_unique<FakeRxnBmsTransport>();
+    FakeRxnBmsTransport *transport = fake.get();
+
+    transport->readWaitError = true;
+
+    RxnBmsProtocol protocol(std::move(fake));
+    QVERIFY(protocol.open(QStringLiteral("fake-rxn")));
+
+    const auto result = protocol.readRealTimeRegister(15, 2);
+
+    QVERIFY(!result.ok);
+    QVERIFY(result.error.contains(
+        QStringLiteral("Transport read error")));
+    QVERIFY(result.error.contains(
+        QStringLiteral("fake transport error")));
+
+    // A genuine transport error must not be retried until timeout.
+    QCOMPARE(transport->waitForReadyReadCalls, 1);
+    QCOMPARE(transport->readCalls, 0);
+    QVERIFY(result.rawResponse.isEmpty());
 }
 
 
