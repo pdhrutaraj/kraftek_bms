@@ -128,6 +128,7 @@ private slots:
     void testFragmentedResponse();
     void testMultipleRegisterReads();
     void testStaleInputIsCleared();
+    void testNackFrameDoesNotPoisonNextRead();
 };
 
 
@@ -182,11 +183,18 @@ void RxnBmsProtocolTest::testErrorAcknowledgements() {
     for (int ack : errorAcks) {
         auto fake = std::make_unique<FakeRxnBmsTransport>();
 
+        // X3 unsuccessful read response is eight bytes:
+        // ACK, command, address MSB/LSB, data MSB/LSB,
+        // don't-care byte, checksum.
         QByteArray response;
         response.append(static_cast<char>(ack));
-        response.append(char(0));
-        response.append(char(0));
-        response.append(char(85));
+        response.append(char(0x20)); // RTD read command
+        response.append(char(0x00)); // Address MSB
+        response.append(char(0x0f)); // Address LSB: register 15
+        response.append(char(0x00));
+        response.append(char(0x00));
+        response.append(char(0x00));
+        response.append(char(85));   // Provisional response checksum
 
         fake->setResponse(response);
 
@@ -234,7 +242,7 @@ void RxnBmsProtocolTest::testIncompleteResponseTimeout() {
         QStringLiteral("timeout/incomplete frame")));
 
     QVERIFY(result.error.contains(
-        QStringLiteral("received 2 of 4 bytes")));
+        QStringLiteral("received 1 of 3 bytes")));
 }
 
 
@@ -253,7 +261,7 @@ void RxnBmsProtocolTest::testNoResponseTimeout() {
         QStringLiteral("timeout/incomplete frame")));
 
     QVERIFY(result.error.contains(
-        QStringLiteral("received 0 of 4 bytes")));
+        QStringLiteral("received 0 of 1 bytes")));
 }
 
 
@@ -371,6 +379,38 @@ void RxnBmsProtocolTest::testStaleInputIsCleared() {
 
     QCOMPARE(transport->clearInputCalls, 1);
 }
+
+
+
+void RxnBmsProtocolTest::testNackFrameDoesNotPoisonNextRead() {
+    auto fake = std::make_unique<FakeRxnBmsTransport>();
+    FakeRxnBmsTransport *transport = fake.get();
+
+    // First transaction: complete eight-byte NACK response.
+    transport->setResponse(QByteArray::fromHex(
+        "1e20000f00000055"));
+
+    // Second transaction: successful two-byte register response.
+    transport->setResponse(QByteArray::fromHex(
+        "01567855"));
+
+    RxnBmsProtocol protocol(std::move(fake));
+    QVERIFY(protocol.open(QStringLiteral("fake-rxn")));
+
+    const auto first = protocol.readRealTimeRegister(15, 2);
+    QVERIFY(!first.ok);
+    QCOMPARE(static_cast<int>(first.ack),
+             static_cast<int>(RxnBmsProtocol::Ack::BankError));
+    QCOMPARE(first.rawResponse.size(), 8);
+
+    const auto second = protocol.readRealTimeRegister(18, 2);
+    QVERIFY2(second.ok, qPrintable(second.error));
+    QCOMPARE(second.data, QByteArray::fromHex("5678"));
+    QCOMPARE(second.rawResponse.size(), 4);
+
+    QCOMPARE(transport->clearInputCalls, 2);
+}
+
 
 
 QTEST_GUILESS_MAIN(RxnBmsProtocolTest)

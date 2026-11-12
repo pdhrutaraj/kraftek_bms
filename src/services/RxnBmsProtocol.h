@@ -4,8 +4,10 @@
 #include "RxnBmsTransport.h"
 
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QString>
 #include <QVector>
+
 #include <memory>
 
 class RxnBmsProtocol final {
@@ -30,9 +32,9 @@ public:
         bool ok = false;
         Ack ack = Ack::Success;
         QByteArray data;
+        QByteArray rawResponse; // Complete or partial RXN response for diagnostics.
         QString error;
     };
-
     // Normal production constructor: uses QSerialPort transport.
     explicit RxnBmsProtocol(QObject *parent = nullptr);
 
@@ -66,7 +68,11 @@ public:
 
 private:
     Result transactRead(Bank bank, quint16 address, int responseDataBytes);
-    bool readExact(int count, QByteArray *out, QString *error);
+    bool readExact(
+        int count,
+        QByteArray *out,
+        QString *error,
+        QElapsedTimer *timer);
 
     std::unique_ptr<RxnBmsTransport> transport_;
 

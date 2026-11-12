@@ -140,7 +140,8 @@ QByteArray RxnBmsProtocol::makeReadCommand(Bank bank, quint16 address) {
 bool RxnBmsProtocol::readExact(
     int count,
     QByteArray *out,
-    QString *error) {
+    QString *error,
+    QElapsedTimer *timer) {
 
     out->clear();
 
@@ -151,13 +152,10 @@ bool RxnBmsProtocol::readExact(
         return false;
     }
 
-    QElapsedTimer timer;
-    timer.start();
-
-    while (out->size() < count && timer.elapsed() < timeoutMs_) {
+    while (out->size() < count && timer->elapsed() < timeoutMs_) {
         if (transport_->bytesAvailable() == 0) {
             const int remaining =
-                qMax(1, timeoutMs_ - static_cast<int>(timer.elapsed()));
+                qMax(1, timeoutMs_ - static_cast<int>(timer->elapsed()));
 
             if (!transport_->waitForReadyRead(remaining)) {
                 continue;
@@ -181,6 +179,7 @@ bool RxnBmsProtocol::readExact(
 
     return true;
 }
+
 
 RxnBmsProtocol::Result RxnBmsProtocol::transactRead(
     Bank bank,
@@ -214,15 +213,39 @@ RxnBmsProtocol::Result RxnBmsProtocol::transactRead(
         return result;
     }
 
-    QByteArray frame;
+    // One deadline for the complete response: ACK plus response body.
+    QElapsedTimer timer;
+    timer.start();
 
-    // Existing framing assumption: ACK + data + checksum.
-    if (!readExact(dataBytes + 2, &frame, &result.error)) {
+    QByteArray ackFrame;
+
+    if (!readExact(1, &ackFrame, &result.error, &timer)) {
+        result.rawResponse = ackFrame;
         return result;
     }
 
-    const quint8 ackValue = static_cast<quint8>(frame.at(0));
+    result.rawResponse = ackFrame;
+
+    const quint8 ackValue =
+        static_cast<quint8>(ackFrame.at(0));
+
     result.ack = static_cast<Ack>(ackValue);
+
+    // Successful read: ACK + data bytes + checksum.
+    // Failed read: ACK + seven remaining bytes (fixed 8-byte response).
+    const int bodyBytes =
+        (ackValue == static_cast<quint8>(Ack::Success))
+            ? dataBytes + 1
+            : 7;
+
+    QByteArray body;
+
+    if (!readExact(bodyBytes, &body, &result.error, &timer)) {
+        result.rawResponse += body;
+        return result;
+    }
+
+    result.rawResponse += body;
 
     if (ackValue != static_cast<quint8>(Ack::Success)) {
         result.error =
@@ -234,7 +257,7 @@ RxnBmsProtocol::Result RxnBmsProtocol::transactRead(
     }
 
     const quint8 receivedChecksum =
-        static_cast<quint8>(frame.at(frame.size() - 1));
+        static_cast<quint8>(body.at(body.size() - 1));
 
     if (receivedChecksum != ProtocolChecksumByte) {
         result.ack = Ack::ChecksumError;
@@ -248,11 +271,12 @@ RxnBmsProtocol::Result RxnBmsProtocol::transactRead(
         return result;
     }
 
-    result.data = frame.mid(1, dataBytes);
+    result.data = body.left(dataBytes);
     result.ok = true;
 
     return result;
 }
+
 
 RxnBmsProtocol::Result RxnBmsProtocol::readRegister(
     Bank bank,
