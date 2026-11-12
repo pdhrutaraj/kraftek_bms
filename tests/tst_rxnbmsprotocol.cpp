@@ -44,11 +44,27 @@ public:
             pendingChunks_ = responseScripts_.dequeue();
         }
 
+        queuedWriteBytes_ = accepted;
         return accepted;
+    }
+
+    qint64 bytesToWrite() const override {
+        return queuedWriteBytes_;
     }
 
     bool waitForBytesWritten(int timeoutMs) override {
         Q_UNUSED(timeoutMs);
+        ++writeWaitCalls;
+
+        if (writeWaitResult) {
+            if (bytesDrainedPerWait < 0) {
+                queuedWriteBytes_ = 0;
+            } else {
+                queuedWriteBytes_ =
+                    qMax<qint64>(0, queuedWriteBytes_ - bytesDrainedPerWait);
+            }
+        }
+
         return writeWaitResult;
     }
 
@@ -58,6 +74,7 @@ public:
 
     bool waitForReadyRead(int timeoutMs) override {
         Q_UNUSED(timeoutMs);
+        ++waitForReadyReadCalls;
 
         if (available_.isEmpty() && !pendingChunks_.isEmpty()) {
             available_ = pendingChunks_.dequeue();
@@ -67,6 +84,12 @@ public:
     }
 
     QByteArray read(qint64 maxSize) override {
+        ++readCalls;
+
+        if (readReturnsEmptyWhenDataAvailable && !available_.isEmpty()) {
+            return {};
+        }
+
         const QByteArray chunk =
             available_.left(static_cast<int>(maxSize));
 
@@ -101,7 +124,12 @@ public:
     QByteArray writtenData;
     bool partialWrite = false;
     bool writeWaitResult = true;
+    qint64 bytesDrainedPerWait = -1;
     int clearInputCalls = 0;
+    int writeWaitCalls = 0;
+    int waitForReadyReadCalls = 0;
+    int readCalls = 0;
+    bool readReturnsEmptyWhenDataAvailable = false;
 
 private:
     bool open_ = false;
@@ -110,6 +138,7 @@ private:
     QByteArray available_;
     QQueue<QByteArray> pendingChunks_;
     QQueue<QQueue<QByteArray>> responseScripts_;
+    qint64 queuedWriteBytes_ = 0;
 };
 
 
@@ -123,7 +152,12 @@ private slots:
     void testChecksumMismatch();
     void testIncompleteResponseTimeout();
     void testNoResponseTimeout();
+    void testReadMakesNoProgress();
+    void testZeroLengthReadResponse();
     void testPartialCommandWriteFails();
+    void testCommandWriteWaitFails();
+    void testCommandWriteQueueDrainsInParts();
+    void testInvalidBankRejectedBeforeTransmission();
     void testReadWhenPortIsClosed();
     void testFragmentedResponse();
     void testMultipleRegisterReads();
@@ -228,6 +262,51 @@ void RxnBmsProtocolTest::testChecksumMismatch() {
 }
 
 
+void RxnBmsProtocolTest::testReadMakesNoProgress() {
+    auto fake = std::make_unique<FakeRxnBmsTransport>();
+    FakeRxnBmsTransport *transport = fake.get();
+
+    // The fake reports an available ACK byte but returns an empty read.
+    transport->setResponse(QByteArray::fromHex("01"));
+    transport->readReturnsEmptyWhenDataAvailable = true;
+
+    RxnBmsProtocol protocol(std::move(fake));
+    QVERIFY(protocol.open(QStringLiteral("fake-rxn")));
+
+    const auto result = protocol.readRealTimeRegister(15, 2);
+
+    QVERIFY(!result.ok);
+    QVERIFY(result.error.contains(
+        QStringLiteral("Transport read made no progress")));
+    QVERIFY(result.error.contains(
+        QStringLiteral("fake transport error")));
+
+    QCOMPARE(transport->readCalls, 1);
+    QCOMPARE(transport->waitForReadyReadCalls, 1);
+    QVERIFY(result.rawResponse.isEmpty());
+}
+
+
+void RxnBmsProtocolTest::testZeroLengthReadResponse() {
+    auto fake = std::make_unique<FakeRxnBmsTransport>();
+    FakeRxnBmsTransport *transport = fake.get();
+
+    // Zero data bytes: success ACK followed by the provisional checksum.
+    transport->setResponse(QByteArray::fromHex("0155"));
+
+    RxnBmsProtocol protocol(std::move(fake));
+    QVERIFY(protocol.open(QStringLiteral("fake-rxn")));
+
+    const auto result = protocol.readRealTimeRegister(15, 0);
+
+    QVERIFY2(result.ok, qPrintable(result.error));
+    QVERIFY(result.data.isEmpty());
+    QCOMPARE(result.rawResponse, QByteArray::fromHex("0155"));
+    QCOMPARE(static_cast<int>(result.ack),
+             static_cast<int>(RxnBmsProtocol::Ack::Success));
+}
+
+
 void RxnBmsProtocolTest::testIncompleteResponseTimeout() {
     auto fake = std::make_unique<FakeRxnBmsTransport>();
     fake->setResponse(QByteArray::fromHex("0112"));
@@ -283,6 +362,71 @@ void RxnBmsProtocolTest::testPartialCommandWriteFails() {
 
     // Fake transport accepted only seven of the eight bytes.
     QCOMPARE(transport->writtenData.size(), 7);
+}
+
+
+void RxnBmsProtocolTest::testCommandWriteWaitFails() {
+    auto fake = std::make_unique<FakeRxnBmsTransport>();
+    FakeRxnBmsTransport *transport = fake.get();
+
+    transport->setResponse(QByteArray::fromHex("01123455"));
+    transport->writeWaitResult = false;
+
+    RxnBmsProtocol protocol(std::move(fake));
+    QVERIFY(protocol.open(QStringLiteral("fake-rxn")));
+
+    const auto result = protocol.readRealTimeRegister(15, 2);
+
+    QVERIFY(!result.ok);
+    QVERIFY(result.error.contains(
+        QStringLiteral("Command transmission timeout/error")));
+
+    QCOMPARE(transport->writeWaitCalls, 1);
+    QCOMPARE(transport->waitForReadyReadCalls, 0);
+    QVERIFY(result.rawResponse.isEmpty());
+}
+
+
+void RxnBmsProtocolTest::testCommandWriteQueueDrainsInParts() {
+    auto fake = std::make_unique<FakeRxnBmsTransport>();
+    FakeRxnBmsTransport *transport = fake.get();
+
+    transport->setResponse(QByteArray::fromHex("01123455"));
+    transport->bytesDrainedPerWait = 2;
+
+    RxnBmsProtocol protocol(std::move(fake));
+    QVERIFY(protocol.open(QStringLiteral("fake-rxn")));
+
+    const auto result = protocol.readRealTimeRegister(15, 2);
+
+    QVERIFY2(result.ok, qPrintable(result.error));
+    QCOMPARE(result.data, QByteArray::fromHex("1234"));
+
+    // Eight queued bytes drained two bytes per successful wait.
+    QCOMPARE(transport->writeWaitCalls, 4);
+    QCOMPARE(transport->waitForReadyReadCalls, 1);
+}
+
+
+void RxnBmsProtocolTest::testInvalidBankRejectedBeforeTransmission() {
+    auto fake = std::make_unique<FakeRxnBmsTransport>();
+    FakeRxnBmsTransport *transport = fake.get();
+
+    RxnBmsProtocol protocol(std::move(fake));
+    QVERIFY(protocol.open(QStringLiteral("fake-rxn")));
+
+    const auto invalidBank =
+        static_cast<RxnBmsProtocol::Bank>(0x05);
+
+    const auto result = protocol.readRegister(invalidBank, 15, 2);
+
+    QVERIFY(!result.ok);
+    QCOMPARE(result.error, QStringLiteral("Invalid RXN register bank"));
+
+    QVERIFY(transport->writtenData.isEmpty());
+    QCOMPARE(transport->clearInputCalls, 0);
+    QCOMPARE(transport->writeWaitCalls, 0);
+    QCOMPARE(transport->waitForReadyReadCalls, 0);
 }
 
 

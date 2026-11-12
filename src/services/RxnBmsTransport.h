@@ -17,6 +17,7 @@ public:
 
     virtual void clearInput() = 0;
     virtual qint64 write(const QByteArray &data) = 0;
+    virtual qint64 bytesToWrite() const = 0;
     virtual bool waitForBytesWritten(int timeoutMs) = 0;
     virtual qint64 bytesAvailable() const = 0;
     virtual bool waitForReadyRead(int timeoutMs) = 0;

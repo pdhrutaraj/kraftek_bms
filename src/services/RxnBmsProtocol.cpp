@@ -49,6 +49,10 @@ public:
         return serial_.write(data);
     }
 
+    qint64 bytesToWrite() const override {
+        return serial_.bytesToWrite();
+    }
+
     bool waitForBytesWritten(int timeoutMs) override {
         return serial_.waitForBytesWritten(timeoutMs);
     }
@@ -162,7 +166,19 @@ bool RxnBmsProtocol::readExact(
             }
         }
 
-        *out += transport_->read(count - out->size());
+        const QByteArray chunk =
+            transport_->read(count - out->size());
+
+        if (chunk.isEmpty()) {
+            if (error) {
+                *error = QStringLiteral(
+                    "Transport read made no progress: %1")
+                    .arg(transport_->errorString());
+            }
+            return false;
+        }
+
+        *out += chunk;
     }
 
     if (out->size() != count) {
@@ -188,6 +204,18 @@ RxnBmsProtocol::Result RxnBmsProtocol::transactRead(
 
     Result result;
 
+    switch (bank) {
+    case Bank::Configuration:
+    case Bank::RealTime:
+    case Bank::Control:
+    case Bank::Historical:
+        break;
+
+    default:
+        result.error = QStringLiteral("Invalid RXN register bank");
+        return result;
+    }
+
     if (!isOpen()) {
         result.error = QStringLiteral("Serial port is not open");
         return result;
@@ -203,14 +231,30 @@ RxnBmsProtocol::Result RxnBmsProtocol::transactRead(
 
     const QByteArray request = makeReadCommand(bank, address);
 
-    if (transport_->write(request) != request.size()
-        || !transport_->waitForBytesWritten(timeoutMs_)) {
+    const qint64 accepted = transport_->write(request);
 
+    if (accepted != request.size()) {
         result.error =
-            QStringLiteral("Failed to transmit complete 8-byte command: %1")
+            QStringLiteral("Failed to transmit: could not queue complete 8-byte command: %1")
                 .arg(transport_->errorString());
-
         return result;
+    }
+
+    QElapsedTimer writeTimer;
+    writeTimer.start();
+
+    while (transport_->bytesToWrite() > 0) {
+        const int remaining =
+            timeoutMs_ - static_cast<int>(writeTimer.elapsed());
+
+        if (remaining <= 0
+            || !transport_->waitForBytesWritten(remaining)) {
+
+            result.error =
+                QStringLiteral("Command transmission timeout/error: %1")
+                    .arg(transport_->errorString());
+            return result;
+        }
     }
 
     // One deadline for the complete response: ACK plus response body.
