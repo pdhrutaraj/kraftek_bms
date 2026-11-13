@@ -224,3 +224,12 @@ QList<HistoricalReading> DashboardController::queryHistory(
 {
     return database_.queryHistory(startUtc, endUtc, batteryId);
 }
+
+QList<HistoricalEvent> DashboardController::queryEvents(
+    const QDateTime &startUtc,
+    const QDateTime &endUtc,
+    const QString &severity,
+    int limit)
+{
+    return database_.queryEvents(startUtc, endUtc, severity, limit);
+}

@@ -19,6 +19,10 @@ public:
     QList<HistoricalReading> queryHistory(const QDateTime &startUtc,
                                           const QDateTime &endUtc,
                                           int batteryId = 0);
+    QList<HistoricalEvent> queryEvents(const QDateTime &startUtc,
+                                       const QDateTime &endUtc,
+                                       const QString &severity = QString(),
+                                       int limit = 100);
 
 public slots:
     void setDisplayMode(const QString &mode);

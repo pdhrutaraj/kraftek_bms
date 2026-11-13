@@ -7,6 +7,7 @@
 
 class QLabel;
 class QTableView;
+class QTableWidget;
 class QProgressBar;
 class QStackedWidget;
 class QGridLayout;
@@ -46,6 +47,7 @@ private:
     void updateAiDemo(const QString &scenario, const QString &mlClass, double mlScore, const QString &summary);
     void updateResponsiveLayout();
     void loadHistory();
+    void loadEventHistory();
     BatteryModel *model_;
     DashboardController *controller_;
     QWidget *sidebar_ = nullptr;
@@ -98,6 +100,11 @@ private:
     QComboBox *historyScope_ = nullptr;
     QComboBox *historyMetric_ = nullptr;
     QLabel *historySummary_ = nullptr;
+    QDateTimeEdit *eventStart_ = nullptr;
+    QDateTimeEdit *eventEnd_ = nullptr;
+    QComboBox *eventSeverity_ = nullptr;
+    QTableWidget *eventTable_ = nullptr;
+    QLabel *eventSummary_ = nullptr;
     QLabel *rs485StatusValue_ = nullptr;
     QLabel *rs485PortValue_ = nullptr;
     QLabel *rs485MetadataValue_ = nullptr;

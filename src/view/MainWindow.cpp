@@ -450,6 +450,7 @@ connect(shutdownButton, &QPushButton::clicked,
     timer->start(1000); clockValue_->setText(QDateTime::currentDateTime().toString("dd MMM yyyy  •  HH:mm:ss"));
     updateResponsiveLayout();
     controller_->refresh();
+    loadEventHistory();
 }
 
 QWidget *MainWindow::makeMetricCard(const QString &eyebrow, QLabel **value, const QString &unit, const QString &accent) {
@@ -569,17 +570,158 @@ QWidget *MainWindow::makeBatteryPage() {
     return page;
 }
 
-QWidget *MainWindow::makeAlarmsPage() {
-    auto *page = new QWidget; auto *l = new QVBoxLayout(page); l->setContentsMargins(24,22,24,22); l->setSpacing(16);
-    l->addWidget(label("Alarms & events", "pageHeading")); l->addWidget(label("Alarm presentation and event history prototype", "pageDescription"));
-    auto *notice = panel(); auto *n = new QVBoxLayout(notice); n->setContentsMargins(18,16,18,16); n->addWidget(label("NO LIVE ALARM INPUT", "alarmHeadline")); auto *txt=label("Protection thresholds in this screen are specification references only; this prototype does not receive hardware alarms. The items below are software status notices, not evidence that the physical battery bank is safe.","pageDescription"); txt->setWordWrap(true); n->addWidget(txt); l->addWidget(notice);
-    auto *table = new QTableWidget(3,3); table->setObjectName("eventTable"); table->setHorizontalHeaderLabels({"TIME", "CLASS", "MESSAGE"}); table->verticalHeader()->hide(); table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); table->setEditTriggers(QAbstractItemView::NoEditTriggers); table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    const bool isSimulator = controller_ && controller_->sourceId() == QStringLiteral("SIMULATOR");
-    const QStringList classes={"INFO","INHIBIT","INFO"};
-    const QStringList messages = isSimulator
-        ? QStringList{"Simulator started","Physical control outputs are not connected","No live hardware telemetry received"}
-        : QStringList{"RXN BMS source selected","Physical control outputs are not connected","RXN BMS telemetry is not connected"};
-    for(int r=0;r<3;++r){table->setItem(r,0,new QTableWidgetItem(QDateTime::currentDateTime().toString("HH:mm:ss")));table->setItem(r,1,new QTableWidgetItem(classes[r]));table->setItem(r,2,new QTableWidgetItem(messages[r]));} l->addWidget(table,1); return page;
+QWidget *MainWindow::makeAlarmsPage()
+{
+    auto *page = new QWidget;
+    auto *l = new QVBoxLayout(page);
+    l->setContentsMargins(24, 22, 24, 22);
+    l->setSpacing(16);
+
+    l->addWidget(label("Alarms & events", "pageHeading"));
+    l->addWidget(label(
+        "Recorded software events retrieved from the local SQLite database.",
+        "pageDescription"));
+
+    // These records are not live hardware alarms and must not be
+    // interpreted as proof of physical battery-bank safety.
+    auto *notice = panel();
+    auto *n = new QVBoxLayout(notice);
+    n->setContentsMargins(18, 16, 18, 16);
+    n->addWidget(label("NO LIVE ALARM INPUT", "alarmHeadline"));
+
+    auto *txt = label(
+        "Protection thresholds in this screen are specification references only; "
+        "this prototype does not receive hardware alarms. The items below are "
+        "software status notices, not evidence that the physical battery bank is safe.",
+        "pageDescription");
+    txt->setWordWrap(true);
+    n->addWidget(txt);
+    l->addWidget(notice);
+
+    auto *filters = panel();
+    auto *filterLayout = new QGridLayout(filters);
+    filterLayout->setContentsMargins(16, 12, 16, 12);
+    filterLayout->setHorizontalSpacing(10);
+    filterLayout->setVerticalSpacing(8);
+
+    eventStart_ = new QDateTimeEdit(QDateTime::currentDateTime().addDays(-1));
+    eventStart_->setCalendarPopup(true);
+    eventStart_->setDisplayFormat("yyyy-MM-dd HH:mm:ss");
+
+    eventEnd_ = new QDateTimeEdit(QDateTime::currentDateTime());
+    eventEnd_->setCalendarPopup(true);
+    eventEnd_->setDisplayFormat("yyyy-MM-dd HH:mm:ss");
+
+    eventSeverity_ = new QComboBox;
+    eventSeverity_->addItem("All severities", QString());
+    eventSeverity_->addItem("INFO", QStringLiteral("INFO"));
+    eventSeverity_->addItem("WARNING", QStringLiteral("WARNING"));
+    eventSeverity_->addItem("CRITICAL", QStringLiteral("CRITICAL"));
+
+    auto *refreshButton = new QPushButton("Refresh events");
+
+    filterLayout->addWidget(label("FROM", "metricEyebrow"), 0, 0);
+    filterLayout->addWidget(label("TO", "metricEyebrow"), 0, 1);
+    filterLayout->addWidget(label("SEVERITY", "metricEyebrow"), 0, 2);
+    filterLayout->addWidget(eventStart_, 1, 0);
+    filterLayout->addWidget(eventEnd_, 1, 1);
+    filterLayout->addWidget(eventSeverity_, 1, 2);
+    filterLayout->addWidget(refreshButton, 1, 3);
+
+    l->addWidget(filters);
+
+    eventSummary_ = label("No event history loaded.", "pageDescription");
+    l->addWidget(eventSummary_);
+
+    eventTable_ = new QTableWidget(0, 7);
+    eventTable_->setObjectName("eventTable");
+    eventTable_->setHorizontalHeaderLabels({
+        "TIME (LOCAL)", "SEVERITY", "EVENT CODE", "MESSAGE",
+        "SOURCE", "ACKNOWLEDGED", "ID"
+    });
+    eventTable_->verticalHeader()->hide();
+    eventTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    eventTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    eventTable_->setSelectionMode(QAbstractItemView::SingleSelection);
+    eventTable_->setWordWrap(true);
+    eventTable_->setAlternatingRowColors(true);
+    eventTable_->setSortingEnabled(false);
+    eventTable_->horizontalHeader()->setSectionResizeMode(
+        QHeaderView::ResizeToContents);
+    eventTable_->horizontalHeader()->setSectionResizeMode(
+        3, QHeaderView::Stretch);
+    eventTable_->setColumnHidden(6, true);
+
+    l->addWidget(eventTable_, 1);
+
+    connect(refreshButton, &QPushButton::clicked,
+            this, &MainWindow::loadEventHistory);
+    connect(eventSeverity_, &QComboBox::currentTextChanged,
+            this, [this](const QString &) { loadEventHistory(); });
+
+    loadEventHistory();
+
+    return page;
+}
+
+void MainWindow::loadEventHistory()
+{
+    if (!controller_ || !eventStart_ || !eventEnd_ ||
+        !eventSeverity_ || !eventTable_ || !eventSummary_) {
+        return;
+    }
+
+    const QDateTime startLocal = eventStart_->dateTime();
+    const QDateTime endLocal = eventEnd_->dateTime();
+
+    if (!startLocal.isValid() || !endLocal.isValid() ||
+        startLocal > endLocal) {
+        eventTable_->setRowCount(0);
+        eventSummary_->setText(
+            "Invalid time range: the start must not be later than the end.");
+        return;
+    }
+
+    const QString severity = eventSeverity_->currentData().toString();
+
+    const QList<HistoricalEvent> events = controller_->queryEvents(
+        startLocal.toUTC(),
+        endLocal.toUTC(),
+        severity,
+        500);
+
+    eventTable_->setRowCount(0);
+
+    for (const HistoricalEvent &event : events) {
+        const int row = eventTable_->rowCount();
+        eventTable_->insertRow(row);
+
+        const QString localTime = event.timestampUtc.isValid()
+            ? event.timestampUtc.toLocalTime().toString("yyyy-MM-dd HH:mm:ss")
+            : QStringLiteral("Invalid timestamp");
+
+        const QStringList values = {
+            localTime,
+            event.severity,
+            event.eventCode,
+            event.message,
+            event.source,
+            event.acknowledged ? QStringLiteral("YES")
+                               : QStringLiteral("NO"),
+            QString::number(event.id)
+        };
+
+        for (int column = 0; column < values.size(); ++column) {
+            auto *item = new QTableWidgetItem(values.at(column));
+            eventTable_->setItem(row, column, item);
+        }
+    }
+
+    eventTable_->resizeRowsToContents();
+
+    eventSummary_->setText(
+        QStringLiteral("%1 event(s) found · maximum 500 displayed")
+            .arg(events.size()));
 }
 
 QWidget *MainWindow::makeAiDemoPage() {
