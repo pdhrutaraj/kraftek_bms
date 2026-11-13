@@ -4,9 +4,9 @@
 #include <QList>
 
 struct DiagnosticResult {
-    QString status = QStringLiteral("MONITORING");
-    QString summary = QStringLiteral("Collecting telemetry baseline");
-    QString mlClass = QStringLiteral("NORMAL");
+    QString status = QStringLiteral("INSUFFICIENT_DATA");
+    QString summary = QStringLiteral("Waiting for valid battery telemetry");
+    QString mlClass = QStringLiteral("NOT RUN");
     QStringList findings;
     double anomalyScore = 0.0;
     double mlScore = 0.0;

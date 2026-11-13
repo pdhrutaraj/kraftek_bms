@@ -105,3 +105,25 @@ add_test(
     NAME tst_telemetrydatabase
     COMMAND tst_telemetrydatabase
 )
+
+# Diagnostic engine input-validation and synthetic advisory tests.
+qt_add_executable(tst_diagnosticengine
+    tst_diagnosticengine.cpp
+    ../src/ai/DiagnosticEngine.h
+    ../src/ai/DiagnosticEngine.cpp
+    ../src/domain/BatteryTypes.h
+)
+
+target_include_directories(tst_diagnosticengine PRIVATE
+    ../src
+)
+
+target_link_libraries(tst_diagnosticengine PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(
+    NAME tst_diagnosticengine
+    COMMAND tst_diagnosticengine
+)
