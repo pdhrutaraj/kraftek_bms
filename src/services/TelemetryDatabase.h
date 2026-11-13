@@ -24,7 +24,8 @@ struct HistoricalReading {
 class TelemetryDatabase final : public QObject {
     Q_OBJECT
 public:
-    explicit TelemetryDatabase(QObject *parent = nullptr);
+    explicit TelemetryDatabase(QObject *parent = nullptr,
+                               const QString &databasePath = QString());
     ~TelemetryDatabase() override;
     bool isReady() const { return ready_; }
     QString databasePath() const { return path_; }

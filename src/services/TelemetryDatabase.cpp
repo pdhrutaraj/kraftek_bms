@@ -1,16 +1,31 @@
 #include "TelemetryDatabase.h"
 #include <QDir>
+#include <QFileInfo>
 #include <QStandardPaths>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QVariant>
 
-TelemetryDatabase::TelemetryDatabase(QObject *parent) : QObject(parent) {
-    connectionName_ = QStringLiteral("kraftek_bms_sqlite_%1").arg(static_cast<qulonglong>(reinterpret_cast<quintptr>(this)));
-    QString root = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (root.isEmpty()) root = QDir::currentPath() + QStringLiteral("/data");
-    QDir().mkpath(root);
-    path_ = root + QStringLiteral("/kraftek_bms.sqlite3");
+TelemetryDatabase::TelemetryDatabase(QObject *parent, const QString &databasePath)
+    : QObject(parent) {
+    connectionName_ = QStringLiteral("kraftek_bms_sqlite_%1").arg(
+        static_cast<qulonglong>(reinterpret_cast<quintptr>(this)));
+
+    if (!databasePath.trimmed().isEmpty()) {
+        path_ = QFileInfo(databasePath).absoluteFilePath();
+    } else {
+        QString root = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        if (root.isEmpty())
+            root = QDir::currentPath() + QStringLiteral("/data");
+
+        path_ = root + QStringLiteral("/kraftek_bms.sqlite3");
+    }
+
+    if (!QDir().mkpath(QFileInfo(path_).absolutePath())) {
+        lastError_ = QStringLiteral("Unable to create database directory");
+        return;
+    }
+
     db_ = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName_);
     db_.setDatabaseName(path_);
     ready_ = initialize();
@@ -75,27 +90,46 @@ bool TelemetryDatabase::saveSnapshot(const QList<BatteryReading> &readings, cons
     }
     if (!db_.commit()) { lastError_ = db_.lastError().text(); db_.rollback(); return false; }
     if (snapshotId) *snapshotId = id;
+    lastError_.clear();
     return true;
 }
 
-bool TelemetryDatabase::logEvent(const QString &severity, const QString &code, const QString &message, const QString &source) {
-    if (!ready_) return false;
-    QSqlQuery q(db_); q.prepare(QStringLiteral("INSERT INTO events(timestamp_utc,severity,event_code,message,source) VALUES(?,?,?,?,?)"));
-    q.addBindValue(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)); q.addBindValue(severity); q.addBindValue(code); q.addBindValue(message); q.addBindValue(source);
-    if (!q.exec()) { lastError_ = q.lastError().text(); return false; }
+bool TelemetryDatabase::logEvent(const QString &severity, const QString &code,
+                                    const QString &message, const QString &source) {
+    if (!ready_) {
+        lastError_ = QStringLiteral("Database unavailable");
+        return false;
+    }
+
+    QSqlQuery q(db_);
+    q.prepare(QStringLiteral(
+        "INSERT INTO events(timestamp_utc,severity,event_code,message,source) VALUES(?,?,?,?,?)"));
+    q.addBindValue(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+    q.addBindValue(severity);
+    q.addBindValue(code);
+    q.addBindValue(message);
+    q.addBindValue(source);
+
+    if (!q.exec()) {
+        lastError_ = q.lastError().text();
+        return false;
+    }
+
+    lastError_.clear();
     return true;
 }
-
-
 
 QList<HistoricalReading> TelemetryDatabase::queryHistory(const QDateTime &startUtc,
                                                          const QDateTime &endUtc,
                                                          int batteryId) {
     QList<HistoricalReading> rows;
-    if (!ready_ || !startUtc.isValid() || !endUtc.isValid() || startUtc > endUtc) {
-        lastError_ = QStringLiteral("Invalid history range or database unavailable");
+    if (!ready_ || !startUtc.isValid() || !endUtc.isValid() ||
+        startUtc > endUtc || batteryId < 0 || batteryId > 4) {
+        lastError_ = QStringLiteral("Invalid history range, battery ID or database unavailable");
         return rows;
     }
+
+    lastError_.clear();
 
     QSqlQuery q(db_);
     q.prepare(QStringLiteral(
@@ -135,16 +169,32 @@ QList<HistoricalReading> TelemetryDatabase::queryHistory(const QDateTime &startU
     return rows;
 }
 
-bool TelemetryDatabase::saveDiagnostic(qint64 snapshotId, const QString &scenario, const QString &status,
-                                       const QString &summary, const QString &mlClass,
-                                       double statisticalScore, double mlScore) {
-    if (!ready_ || snapshotId < 0) return false;
+bool TelemetryDatabase::saveDiagnostic(qint64 snapshotId, const QString &scenario,
+                                       const QString &status, const QString &summary,
+                                       const QString &mlClass, double statisticalScore,
+                                       double mlScore) {
+    if (!ready_ || snapshotId <= 0) {
+        lastError_ = QStringLiteral("Invalid database state or snapshot ID");
+        return false;
+    }
+
     QSqlQuery q(db_);
-    q.prepare(QStringLiteral("INSERT INTO ai_diagnostics(telemetry_id,timestamp_utc,scenario_label,status,summary,ml_class,statistical_score,ml_score) VALUES(?,?,?,?,?,?,?,?)"));
+    q.prepare(QStringLiteral(
+        "INSERT INTO ai_diagnostics(telemetry_id,timestamp_utc,scenario_label,status,summary,ml_class,statistical_score,ml_score) VALUES(?,?,?,?,?,?,?,?)"));
     q.addBindValue(snapshotId);
     q.addBindValue(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
-    q.addBindValue(scenario); q.addBindValue(status); q.addBindValue(summary); q.addBindValue(mlClass);
-    q.addBindValue(statisticalScore); q.addBindValue(mlScore);
-    if (!q.exec()) { lastError_ = q.lastError().text(); return false; }
+    q.addBindValue(scenario);
+    q.addBindValue(status);
+    q.addBindValue(summary);
+    q.addBindValue(mlClass);
+    q.addBindValue(statisticalScore);
+    q.addBindValue(mlScore);
+
+    if (!q.exec()) {
+        lastError_ = q.lastError().text();
+        return false;
+    }
+
+    lastError_.clear();
     return true;
 }

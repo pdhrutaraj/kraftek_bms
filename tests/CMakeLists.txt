@@ -82,3 +82,26 @@ add_test(
     NAME tst_alarmengine
     COMMAND tst_alarmengine
 )
+
+# SQLite telemetry database unit tests.
+qt_add_executable(tst_telemetrydatabase
+    tst_telemetrydatabase.cpp
+    ../src/services/TelemetryDatabase.h
+    ../src/services/TelemetryDatabase.cpp
+    ../src/domain/BatteryTypes.h
+)
+
+target_include_directories(tst_telemetrydatabase PRIVATE
+    ../src
+)
+
+target_link_libraries(tst_telemetrydatabase PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+add_test(
+    NAME tst_telemetrydatabase
+    COMMAND tst_telemetrydatabase
+)
