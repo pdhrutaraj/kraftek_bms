@@ -21,6 +21,16 @@ struct HistoricalReading {
     bool sensorValid = false;
 };
 
+struct HistoricalEvent {
+    qint64 id = 0;
+    QDateTime timestampUtc;
+    QString severity;
+    QString eventCode;
+    QString message;
+    QString source;
+    bool acknowledged = false;
+};
+
 class TelemetryDatabase final : public QObject {
     Q_OBJECT
 public:
@@ -38,6 +48,11 @@ public:
                         const QString &summary, const QString &mlClass, double statisticalScore, double mlScore);
     bool logEvent(const QString &severity, const QString &code, const QString &message,
                   const QString &source = QStringLiteral("HMI"));
+    QList<HistoricalEvent> queryEvents(
+        const QDateTime &startUtc,
+        const QDateTime &endUtc,
+        const QString &severity = QString(),
+        int limit = 100);
 private:
     bool initialize();
     QSqlDatabase db_;

@@ -119,6 +119,73 @@ bool TelemetryDatabase::logEvent(const QString &severity, const QString &code,
     return true;
 }
 
+QList<HistoricalEvent> TelemetryDatabase::queryEvents(
+    const QDateTime &startUtc,
+    const QDateTime &endUtc,
+    const QString &severity,
+    int limit) {
+
+    QList<HistoricalEvent> rows;
+
+    if (!ready_ || !startUtc.isValid() || !endUtc.isValid() ||
+        startUtc > endUtc || limit < 1 || limit > 10000) {
+        lastError_ = QStringLiteral(
+            "Invalid event history range, limit or database unavailable");
+        return rows;
+    }
+
+    lastError_.clear();
+
+    // A default-constructed QString is null. Bind a non-null empty
+    // string so SQLite evaluates the optional severity filter correctly.
+    QString severityFilter = severity.trimmed();
+    if (severityFilter.isNull()) {
+        severityFilter = QStringLiteral("");
+    }
+
+    QSqlQuery q(db_);
+    q.prepare(QStringLiteral(
+        "SELECT id,timestamp_utc,severity,event_code,message,source,acknowledged "
+        "FROM events "
+        "WHERE timestamp_utc>=? AND timestamp_utc<=? "
+        "AND (?='' OR severity=?) "
+        "ORDER BY timestamp_utc DESC,id DESC "
+        "LIMIT ?"));
+
+    q.addBindValue(startUtc.toUTC().toString(Qt::ISODateWithMs));
+    q.addBindValue(endUtc.toUTC().toString(Qt::ISODateWithMs));
+    q.addBindValue(severityFilter);
+    q.addBindValue(severityFilter);
+    q.addBindValue(limit);
+
+    if (!q.exec()) {
+        lastError_ = q.lastError().text();
+        return rows;
+    }
+
+    while (q.next()) {
+        HistoricalEvent event;
+        event.id = q.value(0).toLongLong();
+        event.timestampUtc = QDateTime::fromString(
+            q.value(1).toString(), Qt::ISODateWithMs);
+
+        if (!event.timestampUtc.isValid()) {
+            event.timestampUtc = QDateTime::fromString(
+                q.value(1).toString(), Qt::ISODate).toUTC();
+        }
+
+        event.severity = q.value(2).toString();
+        event.eventCode = q.value(3).toString();
+        event.message = q.value(4).toString();
+        event.source = q.value(5).toString();
+        event.acknowledged = q.value(6).toInt() != 0;
+
+        rows.append(event);
+    }
+
+    return rows;
+}
+
 QList<HistoricalReading> TelemetryDatabase::queryHistory(const QDateTime &startUtc,
                                                          const QDateTime &endUtc,
                                                          int batteryId) {

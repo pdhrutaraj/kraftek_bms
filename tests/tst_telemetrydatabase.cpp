@@ -47,6 +47,10 @@ private slots:
     void savesDiagnosticForExistingSnapshot();
     void rejectsDiagnosticForUnknownSnapshot();
     void logsEvent();
+    void queriesEventsNewestFirstAndReturnsFields();
+    void filtersEventsBySeverity();
+    void appliesEventHistoryLimit();
+    void handlesEmptyAndInvalidEventHistoryQueries();
     void rejectsInvalidBatteryHistoryId();
     void rejectsZeroDiagnosticSnapshotId();
 };
@@ -281,6 +285,157 @@ void TelemetryDatabaseTest::logsEvent()
                  QStringLiteral("Database event logging test"),
                  QStringLiteral("UNIT_TEST")),
              qPrintable(database.lastError()));
+}
+
+void TelemetryDatabaseTest::queriesEventsNewestFirstAndReturnsFields()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    TelemetryDatabase database(
+        nullptr, tempDir.filePath("event_history_order.sqlite3"));
+
+    QVERIFY2(database.isReady(), qPrintable(database.lastError()));
+
+    QVERIFY2(database.logEvent(
+                 QStringLiteral("INFO"),
+                 QStringLiteral("FIRST_EVENT"),
+                 QStringLiteral("First event"),
+                 QStringLiteral("UNIT_TEST")),
+             qPrintable(database.lastError()));
+
+    QVERIFY2(database.logEvent(
+                 QStringLiteral("WARNING"),
+                 QStringLiteral("SECOND_EVENT"),
+                 QStringLiteral("Second event"),
+                 QStringLiteral("UNIT_TEST")),
+             qPrintable(database.lastError()));
+
+    const QDateTime start = QDateTime::currentDateTimeUtc().addSecs(-60);
+    const QDateTime end = QDateTime::currentDateTimeUtc().addSecs(60);
+
+    const QList<HistoricalEvent> events =
+        database.queryEvents(start, end);
+
+    QCOMPARE(events.size(), 2);
+
+    // Newest first. The ID is also the tie-breaker for equal timestamps.
+    QVERIFY(events.at(0).id > events.at(1).id);
+
+    QCOMPARE(events.at(0).severity, QStringLiteral("WARNING"));
+    QCOMPARE(events.at(0).eventCode, QStringLiteral("SECOND_EVENT"));
+    QCOMPARE(events.at(0).message, QStringLiteral("Second event"));
+    QCOMPARE(events.at(0).source, QStringLiteral("UNIT_TEST"));
+    QVERIFY(events.at(0).timestampUtc.isValid());
+    QCOMPARE(events.at(0).timestampUtc.timeSpec(), Qt::UTC);
+    QVERIFY(!events.at(0).acknowledged);
+
+    QCOMPARE(events.at(1).severity, QStringLiteral("INFO"));
+    QCOMPARE(events.at(1).eventCode, QStringLiteral("FIRST_EVENT"));
+    QCOMPARE(events.at(1).message, QStringLiteral("First event"));
+    QCOMPARE(events.at(1).source, QStringLiteral("UNIT_TEST"));
+    QVERIFY(events.at(1).timestampUtc.isValid());
+}
+
+void TelemetryDatabaseTest::filtersEventsBySeverity()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    TelemetryDatabase database(
+        nullptr, tempDir.filePath("event_history_severity.sqlite3"));
+
+    QVERIFY2(database.isReady(), qPrintable(database.lastError()));
+
+    QVERIFY2(database.logEvent(
+                 QStringLiteral("INFO"),
+                 QStringLiteral("INFO_EVENT"),
+                 QStringLiteral("Information event")),
+             qPrintable(database.lastError()));
+
+    QVERIFY2(database.logEvent(
+                 QStringLiteral("WARNING"),
+                 QStringLiteral("WARNING_EVENT_1"),
+                 QStringLiteral("First warning")),
+             qPrintable(database.lastError()));
+
+    QVERIFY2(database.logEvent(
+                 QStringLiteral("WARNING"),
+                 QStringLiteral("WARNING_EVENT_2"),
+                 QStringLiteral("Second warning")),
+             qPrintable(database.lastError()));
+
+    const QDateTime start = QDateTime::currentDateTimeUtc().addSecs(-60);
+    const QDateTime end = QDateTime::currentDateTimeUtc().addSecs(60);
+
+    const QList<HistoricalEvent> events =
+        database.queryEvents(start, end, QStringLiteral(" WARNING "));
+
+    QCOMPARE(events.size(), 2);
+    QCOMPARE(events.at(0).severity, QStringLiteral("WARNING"));
+    QCOMPARE(events.at(1).severity, QStringLiteral("WARNING"));
+    QVERIFY(database.lastError().isEmpty());
+}
+
+void TelemetryDatabaseTest::appliesEventHistoryLimit()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    TelemetryDatabase database(
+        nullptr, tempDir.filePath("event_history_limit.sqlite3"));
+
+    QVERIFY2(database.isReady(), qPrintable(database.lastError()));
+
+    for (int i = 1; i <= 3; ++i) {
+        QVERIFY2(database.logEvent(
+                     QStringLiteral("INFO"),
+                     QStringLiteral("LIMIT_EVENT_%1").arg(i),
+                     QStringLiteral("Limit test event %1").arg(i)),
+                 qPrintable(database.lastError()));
+    }
+
+    const QDateTime start = QDateTime::currentDateTimeUtc().addSecs(-60);
+    const QDateTime end = QDateTime::currentDateTimeUtc().addSecs(60);
+
+    const QList<HistoricalEvent> events =
+        database.queryEvents(start, end, QString(), 2);
+
+    QCOMPARE(events.size(), 2);
+    QVERIFY(events.at(0).id > events.at(1).id);
+}
+
+void TelemetryDatabaseTest::handlesEmptyAndInvalidEventHistoryQueries()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    TelemetryDatabase database(
+        nullptr, tempDir.filePath("event_history_validation.sqlite3"));
+
+    QVERIFY2(database.isReady(), qPrintable(database.lastError()));
+
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+
+    const QList<HistoricalEvent> emptyEvents =
+        database.queryEvents(now.addDays(1), now.addDays(2));
+
+    QVERIFY(emptyEvents.isEmpty());
+    QVERIFY(database.lastError().isEmpty());
+
+    QVERIFY(database.queryEvents(QDateTime(), now).isEmpty());
+    QVERIFY(!database.lastError().isEmpty());
+
+    QVERIFY(database.queryEvents(now, now.addSecs(-1)).isEmpty());
+    QVERIFY(!database.lastError().isEmpty());
+
+    QVERIFY(database.queryEvents(now.addSecs(-1), now.addSecs(1),
+                                 QString(), 0).isEmpty());
+    QVERIFY(!database.lastError().isEmpty());
+
+    QVERIFY(database.queryEvents(now.addSecs(-1), now.addSecs(1),
+                                 QString(), 10001).isEmpty());
+    QVERIFY(!database.lastError().isEmpty());
 }
 
 void TelemetryDatabaseTest::rejectsInvalidBatteryHistoryId()
