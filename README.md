@@ -14,13 +14,13 @@ A Qt 6 Widgets / C++17 desktop HMI prototype with Qt SQL / SQLite3 persistence u
 - Interfaces under consideration: RS-485 Modbus RTU or CAN. No live interface is enabled in this prototype.
 - SQLite3 runtime storage and a synthetic-data AI demo is implemented with selectable/automatic fault scenarios, statistical heuristics, and a lightweight nearest-centroid synthetic classifier. It is advisory only; live CAN/RS-485, calibrated coulomb counting, validated SoC/SoH algorithms, and a production-trained/validated ML model remain future integration work.
 
-![Alt text](<Screenshot from 2026-11-08 14-19-03-1.png>) 
-![Alt text](<Screenshot from 2026-11-08 14-19-27-1.png>) 
-![Alt text](<Screenshot from 2026-11-08 14-19-44.png>) 
-![Alt text](<Screenshot from 2026-11-08 14-20-02.png>) 
-![Alt text](<Screenshot from 2026-11-08 14-20-51.png>) 
-![Alt text](<Screenshot from 2026-11-08 14-21-19.png>) 
-![Alt text](<Screenshot from 2026-11-08 14-21-33.png>)
+![Alt text](<overview.png>) 
+![Alt text](<battery_details.png>) 
+![Alt text](<alarm_events.png>) 
+![Alt text](<system_status.png>) 
+![Alt text](<historical_trends.png>) 
+![Alt text](<ai_demo.png>) 
+![Alt text](<rs485_diagnostics.png>)
 
 ## Build on Ubuntu with Qt 
 ```bash
