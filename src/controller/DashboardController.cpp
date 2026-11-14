@@ -71,8 +71,8 @@ void DashboardController::refresh()
             0.0);
         emit aiDemoChanged(
             QStringLiteral("N/A"),
-            QStringLiteral("N/A"),
-            0.0,
+            QStringLiteral("NOT RUN"),
+            0.0, 0.0, -1, -1, QStringList(),
             QStringLiteral("No valid telemetry. No AI analysis was performed."));
 
         emit databaseStatusChanged(
@@ -140,8 +140,19 @@ void DashboardController::refresh()
             aiStored = false;
         }
 
+        int validSensorCount = 0;
+        int invalidSensorCount = 0;
+        for (const auto &reading : readings) {
+            if (reading.sensorValid)
+                ++validSensorCount;
+            else
+                ++invalidSensorCount;
+        }
+
         emit diagnosticsChanged(d.status, d.summary, d.anomalyScore);
-        emit aiDemoChanged(scenario, d.mlClass, d.mlScore, d.summary);
+        emit aiDemoChanged(
+            scenario, d.mlClass, d.mlScore, d.anomalyScore,
+            validSensorCount, invalidSensorCount, d.findings, d.summary);
 
         const QString diagnosticKey =
             scenario + QStringLiteral("|") + d.status +
@@ -168,7 +179,7 @@ void DashboardController::refresh()
         emit aiDemoChanged(
             QStringLiteral("N/A"),
             QStringLiteral("NOT RUN"),
-            0.0,
+            0.0, 0.0, -1, -1, QStringList(),
             QStringLiteral("No validated RXN field-data diagnostic model is configured."));
     }
 

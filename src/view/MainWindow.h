@@ -4,6 +4,7 @@
 #include <QVector>
 #include <QPointF>
 #include <QDateTime>
+#include <QStringList>
 
 class QLabel;
 class QTableView;
@@ -44,7 +45,10 @@ private:
     QWidget *makeTrendPage();
     QWidget *makeRs485DiagnosticsPage();
     void refreshRs485Diagnostics();
-    void updateAiDemo(const QString &scenario, const QString &mlClass, double mlScore, const QString &summary);
+    void updateAiDemo(const QString &scenario, const QString &mlClass,
+                      double mlScore, double anomalyScore,
+                      int validSensorCount, int invalidSensorCount,
+                      const QStringList &findings, const QString &summary);
     void updateResponsiveLayout();
     void loadHistory();
     void loadEventHistory();
@@ -92,6 +96,9 @@ private:
     QLabel *aiScenarioValue_ = nullptr;
     QLabel *aiClassValue_ = nullptr;
     QLabel *aiScoreValue_ = nullptr;
+    QLabel *aiAnomalyScoreValue_ = nullptr;
+    QLabel *aiSensorValidityValue_ = nullptr;
+    QLabel *aiFindingsValue_ = nullptr;
     QLabel *aiSummaryValue_ = nullptr;
     QComboBox *scenarioCombo_ = nullptr;
     QCheckBox *autoCycleCheck_ = nullptr;

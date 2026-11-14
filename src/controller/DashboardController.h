@@ -5,6 +5,7 @@
 #include "../services/BatteryHealthCalculator.h"
 #include "../ai/DiagnosticEngine.h"
 #include <QObject>
+#include <QStringList>
 #include <memory>
 
 class DashboardController final : public QObject {
@@ -40,7 +41,9 @@ signals:
     void databaseStatusChanged(const QString &status);
     void diagnosticsChanged(const QString &status, const QString &summary, double anomalyScore);
     void aiDemoChanged(const QString &scenario, const QString &mlClass,
-                       double mlScore, const QString &summary);
+                       double mlScore, double anomalyScore,
+                       int validSensorCount, int invalidSensorCount,
+                       const QStringList &findings, const QString &summary);
 
 private:
     BatteryModel *model_;

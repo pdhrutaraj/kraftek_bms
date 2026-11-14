@@ -395,6 +395,8 @@ connect(shutdownButton, &QPushButton::clicked,
 
     pages_ = new QStackedWidget; pages_->setObjectName("pageStack");
     auto addScrollablePage = [this](QWidget *page, bool verticalScroll = true) {
+        page->setObjectName("contentPage");
+        page->setAttribute(Qt::WA_StyledBackground, true);
         auto *scroll = new QScrollArea;
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
@@ -404,12 +406,12 @@ connect(shutdownButton, &QPushButton::clicked,
         pages_->addWidget(scroll);
     };
     addScrollablePage(makeDashboardPage(), false);
-    addScrollablePage(makeBatteryPage());
+    addScrollablePage(makeBatteryPage(), false);
     addScrollablePage(makeAlarmsPage());
-    addScrollablePage(makeSystemPage());
+    addScrollablePage(makeSystemPage(), false);
     addScrollablePage(makeTrendPage());
     addScrollablePage(makeAiDemoPage());
-    addScrollablePage(makeRs485DiagnosticsPage());
+    addScrollablePage(makeRs485DiagnosticsPage(), false);
     bodyLayout->addWidget(pages_, 1); outer->addWidget(body, 1);
 
     auto *footer = new QFrame; footer->setObjectName("footerBar"); footer->setFixedHeight(32);
@@ -725,7 +727,7 @@ void MainWindow::loadEventHistory()
 }
 
 QWidget *MainWindow::makeAiDemoPage() {
-    auto *page = new QWidget; auto *l = new QVBoxLayout(page); l->setContentsMargins(24,22,24,22); l->setSpacing(14);
+    auto *page = new QWidget; auto *l = new QVBoxLayout(page); l->setContentsMargins(18,12,18,12); l->setSpacing(8); l->setSizeConstraint(QLayout::SetMinimumSize);
     l->addWidget(label("AI battery health demo", "pageHeading"));
     const bool isSimulator = controller_ && controller_->sourceId() == QStringLiteral("SIMULATOR");
     auto *description = label(
@@ -735,7 +737,7 @@ QWidget *MainWindow::makeAiDemoPage() {
         "pageDescription");
     description->setWordWrap(true);
     l->addWidget(description);
-    auto *warning = panel(); auto *wl = new QVBoxLayout(warning); wl->setContentsMargins(16,12,16,12);
+    auto *warning = panel(); auto *wl = new QVBoxLayout(warning); wl->setContentsMargins(12,8,12,8);
     auto *warningText = label(
         isSimulator
             ? "SIMULATION ONLY — AI outputs are advisory and are not connected to BMS protection or physical controls."
@@ -744,7 +746,7 @@ QWidget *MainWindow::makeAiDemoPage() {
     warningText->setWordWrap(true);
     wl->addWidget(warningText);
     l->addWidget(warning);
-    auto *controls = panel(); auto *cl = new QGridLayout(controls); cl->setContentsMargins(18,16,18,16); cl->setHorizontalSpacing(12); cl->setVerticalSpacing(8);
+    auto *controls = panel(); auto *cl = new QGridLayout(controls); cl->setContentsMargins(12,8,12,8); cl->setHorizontalSpacing(12); cl->setVerticalSpacing(5);
     cl->addWidget(label("SELECT SYNTHETIC SCENARIO", "metricEyebrow"),0,0);
     scenarioCombo_ = new QComboBox; scenarioCombo_->addItems({"Normal", "Voltage sag", "Block imbalance", "Temperature rise", "Sensor spike"}); cl->addWidget(scenarioCombo_,1,0);
     auto *apply = new QPushButton("Apply scenario now"); cl->addWidget(apply,1,1);
@@ -754,26 +756,46 @@ QWidget *MainWindow::makeAiDemoPage() {
     connect(autoCycleCheck_, &QCheckBox::toggled, this, [this](bool enabled) { controller_->setAutomaticCycle(enabled); if (!enabled) controller_->setDemoScenario(scenarioCombo_->currentText()); });
     controls->setVisible(isSimulator);
     l->addWidget(controls);
-    auto *grid = new QGridLayout; grid->setSpacing(12);
+    auto *grid = new QGridLayout; grid->setSpacing(8);
     auto addValue = [grid](int row, int col, const QString &title, QLabel **target) {
-        auto *card = panel("metricCard"); auto *v = new QVBoxLayout(card); v->setContentsMargins(16,14,16,14); v->addWidget(label(title,"metricEyebrow")); *target = label("--","metricValue"); (*target)->setWordWrap(true); v->addWidget(*target); grid->addWidget(card,row,col);
+        auto *card = panel("metricCard"); auto *v = new QVBoxLayout(card); v->setContentsMargins(12,8,12,8); v->addWidget(label(title,"metricEyebrow")); *target = label("--","metricValue"); (*target)->setWordWrap(true); v->addWidget(*target); grid->addWidget(card,row,col);
     };
-    addValue(0,0,"ACTIVE SCENARIO",&aiScenarioValue_); addValue(0,1,"ML CLASSIFICATION",&aiClassValue_); addValue(0,2,"MODEL ANOMALY SCORE",&aiScoreValue_);
+    addValue(0,0,"ACTIVE SCENARIO",&aiScenarioValue_);
+    addValue(0,1,"ML CLASSIFICATION",&aiClassValue_);
+    addValue(1,0,"ML DISTANCE SCORE",&aiScoreValue_);
+    addValue(1,1,"STATISTICAL ANOMALY SCORE",&aiAnomalyScoreValue_);
     l->addLayout(grid);
-    auto *result = panel(); auto *rl = new QVBoxLayout(result); rl->setContentsMargins(18,16,18,16); rl->addWidget(label("ADVISORY EXPLANATION", "panelHeading"));
+    auto *result = panel(); auto *rl = new QVBoxLayout(result); rl->setContentsMargins(12,8,12,8); rl->addWidget(label("ADVISORY EXPLANATION", "panelHeading"));
     aiSummaryValue_ = label(
         isSimulator ? "Waiting for synthetic telemetry…" : "Waiting for RXN BMS diagnostic status…",
         "pageDescription");
     aiSummaryValue_->setWordWrap(true);
     rl->addWidget(aiSummaryValue_);
+
+    aiSensorValidityValue_ = label("Sensor flags: N/A", "pageDescription");
+    aiSensorValidityValue_->setWordWrap(true);
+    rl->addWidget(aiSensorValidityValue_);
+
+    rl->addWidget(label("INDIVIDUAL FINDINGS", "panelHeading"));
+    aiFindingsValue_ = label("No diagnostic findings available.", "pageDescription");
+    aiFindingsValue_->setWordWrap(true);
+    rl->addWidget(aiFindingsValue_);
+
     l->addWidget(result);
-    l->addStretch();
     return page;
 }
 
-void MainWindow::updateAiDemo(const QString &scenario, const QString &mlClass,
-                              double mlScore, const QString &summary) {
-    const bool isSimulator = controller_ && controller_->sourceId() == QStringLiteral("SIMULATOR");
+void MainWindow::updateAiDemo(
+    const QString &scenario, const QString &mlClass,
+    double mlScore, double anomalyScore,
+    int validSensorCount, int invalidSensorCount,
+    const QStringList &findings, const QString &summary) {
+
+    const bool isSimulator =
+        controller_ && controller_->sourceId() == QStringLiteral("SIMULATOR");
+    const bool analysisAvailable =
+        isSimulator && mlClass != QStringLiteral("NOT RUN") &&
+        scenario != QStringLiteral("N/A");
 
     if (aiScenarioValue_)
         aiScenarioValue_->setText(isSimulator ? scenario : QStringLiteral("N/A"));
@@ -782,20 +804,55 @@ void MainWindow::updateAiDemo(const QString &scenario, const QString &mlClass,
         aiClassValue_->setText(mlClass);
 
     if (aiScoreValue_) {
-        if (!isSimulator || mlClass == QStringLiteral("NOT RUN") || scenario == QStringLiteral("N/A"))
-            aiScoreValue_->setText(QStringLiteral("N/A"));
-        else
-            aiScoreValue_->setText(QStringLiteral("%1 / 100").arg(mlScore,0,'f',1));
+        aiScoreValue_->setText(
+            analysisAvailable
+                ? QStringLiteral("%1 / 100").arg(mlScore, 0, 'f', 1)
+                : QStringLiteral("N/A"));
+    }
+
+    if (aiAnomalyScoreValue_) {
+        aiAnomalyScoreValue_->setText(
+            analysisAvailable
+                ? QStringLiteral("%1 / 100").arg(anomalyScore, 0, 'f', 1)
+                : QStringLiteral("N/A"));
+    }
+
+    if (aiSensorValidityValue_) {
+        if (analysisAvailable && validSensorCount >= 0 &&
+            invalidSensorCount >= 0) {
+            aiSensorValidityValue_->setText(
+                QStringLiteral("Sensor flags: %1 marked valid · %2 marked invalid")
+                    .arg(validSensorCount)
+                    .arg(invalidSensorCount));
+        } else {
+            aiSensorValidityValue_->setText(QStringLiteral("Sensor flags: N/A"));
+        }
+    }
+
+    if (aiFindingsValue_) {
+        if (!analysisAvailable) {
+            aiFindingsValue_->setText(
+                QStringLiteral("N/A"));
+        } else if (findings.isEmpty()) {
+            aiFindingsValue_->setText(
+                QStringLiteral("No individual findings reported."));
+        } else {
+            aiFindingsValue_->setText(
+                QStringLiteral("• ") + findings.join(QStringLiteral("\n• ")));
+        }
     }
 
     if (aiSummaryValue_) {
-        const QString displaySummary = isSimulator
-            ? summary + QStringLiteral("\n\nSynthetic-data model score is not a probability of failure and is not a protection signal.")
+        const QString displaySummary = analysisAvailable
+            ? summary + QStringLiteral(
+                "\n\nML distance score is not a probability of failure. "
+                "All diagnostic outputs are advisory and are not protection signals.")
             : summary;
         aiSummaryValue_->setText(displaySummary);
     }
 
-    if (isSimulator && scenarioCombo_ && scenarioCombo_->currentText() != scenario) {
+    if (isSimulator && scenarioCombo_ &&
+        scenarioCombo_->currentText() != scenario) {
         const QSignalBlocker blocker(scenarioCombo_);
         scenarioCombo_->setCurrentText(scenario);
     }

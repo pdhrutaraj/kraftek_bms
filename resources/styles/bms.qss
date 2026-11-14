@@ -57,3 +57,69 @@ QDateTimeEdit { color: #dce7ef; background: #17232f; border: 1px solid #344757; 
 QPushButton { color: #e7eef5; background: #172b38; border: 1px solid #344757; border-radius: 5px; padding: 7px 10px; }
 QPushButton:hover { background: #21403f; }
 QScrollArea { border: 0; background: transparent; }
+
+
+/* Shared content-page background and accessible form controls. */
+QWidget#contentPage {
+    background-color: #0b1118;
+    color: #e7eef5;
+}
+
+QScrollArea {
+    background-color: #0b1118;
+}
+
+QCheckBox {
+    color: #dce7ef;
+    spacing: 8px;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    background-color: #17232f;
+    border: 1px solid #718697;
+    border-radius: 3px;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #245b56;
+    border: 1px solid #55d8b1;
+}
+
+QCheckBox::indicator:disabled {
+    background-color: #202a33;
+    border-color: #465563;
+}
+
+QComboBox {
+    color: #e7eef5;
+    background-color: #17232f;
+    border: 1px solid #344757;
+    border-radius: 5px;
+    padding: 6px 8px;
+    min-height: 28px;
+}
+
+QComboBox QAbstractItemView {
+    color: #e7eef5;
+    background-color: #17232f;
+    selection-background-color: #245b56;
+    selection-color: #ffffff;
+    border: 1px solid #344757;
+}
+
+QDateTimeEdit {
+    color: #e7eef5;
+    background-color: #17232f;
+    selection-background-color: #245b56;
+    selection-color: #ffffff;
+}
+
+QLabel#pageHeading {
+    color: #edf4fa;
+}
+
+QLabel#pageDescription {
+    color: #a6b7c6;
+}
