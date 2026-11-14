@@ -409,7 +409,7 @@ connect(shutdownButton, &QPushButton::clicked,
     addScrollablePage(makeBatteryPage(), false);
     addScrollablePage(makeAlarmsPage());
     addScrollablePage(makeSystemPage(), false);
-    addScrollablePage(makeTrendPage());
+    addScrollablePage(makeTrendPage(), false);
     addScrollablePage(makeAiDemoPage());
     addScrollablePage(makeRs485DiagnosticsPage(), false);
     bodyLayout->addWidget(pages_, 1); outer->addWidget(body, 1);
