@@ -30,6 +30,7 @@ private slots:
     void nonFiniteMeasurementsAreRejected();
     void sohBoundaryZeroAndHundredAreValid();
     void equalSohKeepsFirstBattery();
+    void allInvalidReadingsAreUnavailable();
 };
 
 void BatteryHealthCalculatorTest::emptyInput() {
@@ -155,6 +156,22 @@ void BatteryHealthCalculatorTest::equalSohKeepsFirstBattery() {
     QVERIFY(result.available);
     QCOMPARE(result.bankSohPct, 80.0);
     QCOMPARE(result.weakestBatteryId, 2);
+}
+
+
+void BatteryHealthCalculatorTest::allInvalidReadingsAreUnavailable() {
+    const auto result = BatteryHealthCalculator::calculate({
+        battery(1, 90.0, 12.6, 25.0, false),
+        battery(2, -1.0),
+        battery(3, 101.0),
+        battery(4, 80.0,
+                std::numeric_limits<double>::quiet_NaN())
+    });
+
+    QVERIFY(!result.available);
+    QCOMPARE(result.validBatteryCount, 0);
+    QCOMPARE(result.invalidBatteryCount, 4);
+    QCOMPARE(result.weakestBatteryId, -1);
 }
 
 QTEST_GUILESS_MAIN(BatteryHealthCalculatorTest)

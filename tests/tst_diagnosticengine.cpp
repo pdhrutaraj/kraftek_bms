@@ -51,6 +51,11 @@ private slots:
     void highTemperatureIsReviewed();
     void highCurrentVoltageSagIsReviewed();
     void normalInputBuildsBaseline();
+    void validSensorWithInfiniteTemperatureIsInsufficient();
+    void outOfRangeBatteryIdIsInsufficient();
+    void rejectedReadingDoesNotAdvanceBaseline();
+    void independentEnginesProduceDeterministicResults();
+    void rollingVoltageBaselineDetectsDeviation();
 };
 
 void DiagnosticEngineTest::staleBankIsUnavailable() {
@@ -243,6 +248,86 @@ void DiagnosticEngineTest::normalInputBuildsBaseline() {
     const auto tenth = engine.evaluate(readings, bank);
     QCOMPARE(tenth.status, QStringLiteral("NORMAL"));
     QCOMPARE(tenth.mlClass, QStringLiteral("NORMAL"));
+}
+
+
+void DiagnosticEngineTest::validSensorWithInfiniteTemperatureIsInsufficient() {
+    DiagnosticEngine engine;
+
+    const auto result = engine.evaluate({
+        battery(1, 12.6, std::numeric_limits<double>::infinity()),
+        battery(2),
+        battery(3),
+        battery(4)
+    }, normalBank());
+
+    QCOMPARE(result.status, QStringLiteral("INSUFFICIENT_DATA"));
+    QCOMPARE(result.mlClass, QStringLiteral("NOT RUN"));
+}
+
+void DiagnosticEngineTest::outOfRangeBatteryIdIsInsufficient() {
+    DiagnosticEngine engine;
+
+    const auto result = engine.evaluate({
+        battery(0), battery(2), battery(3), battery(4)
+    }, normalBank());
+
+    QCOMPARE(result.status, QStringLiteral("INSUFFICIENT_DATA"));
+    QCOMPARE(result.mlClass, QStringLiteral("NOT RUN"));
+}
+
+void DiagnosticEngineTest::rejectedReadingDoesNotAdvanceBaseline() {
+    DiagnosticEngine engine;
+
+    auto invalid = normalReadings();
+    invalid[0].temperatureC = std::numeric_limits<double>::infinity();
+
+    const auto rejected = engine.evaluate(invalid, normalBank());
+    QCOMPARE(rejected.status, QStringLiteral("INSUFFICIENT_DATA"));
+
+    const auto accepted = engine.evaluate(normalReadings(), normalBank());
+    QCOMPARE(accepted.status, QStringLiteral("BASELINING"));
+    QVERIFY(accepted.summary.contains(QStringLiteral("(1/10 samples)")));
+}
+
+void DiagnosticEngineTest::independentEnginesProduceDeterministicResults() {
+    DiagnosticEngine first;
+    DiagnosticEngine second;
+
+    const auto readings = normalReadings();
+    const auto bank = normalBank();
+
+    const auto a = first.evaluate(readings, bank);
+    const auto b = second.evaluate(readings, bank);
+
+    QCOMPARE(a.status, b.status);
+    QCOMPARE(a.mlClass, b.mlClass);
+    QCOMPARE(a.mlScore, b.mlScore);
+    QCOMPARE(a.anomalyScore, b.anomalyScore);
+    QCOMPARE(a.findings, b.findings);
+}
+
+void DiagnosticEngineTest::rollingVoltageBaselineDetectsDeviation() {
+    DiagnosticEngine engine;
+    const auto readings = normalReadings();
+
+    for (int i = 0; i < 10; ++i) {
+        BankStatus bank = normalBank();
+        bank.voltageV = (i % 2 == 0) ? 50.2 : 50.6;
+
+        const auto result = engine.evaluate(readings, bank);
+        QVERIFY(result.status == QStringLiteral("BASELINING") ||
+                result.status == QStringLiteral("NORMAL"));
+    }
+
+    BankStatus deviation = normalBank();
+    deviation.voltageV = 51.5;
+
+    const auto result = engine.evaluate(readings, deviation);
+
+    QCOMPARE(result.status, QStringLiteral("REVIEW"));
+    QVERIFY(result.summary.contains(
+        QStringLiteral("statistical baseline")));
 }
 
 QTEST_GUILESS_MAIN(DiagnosticEngineTest)
