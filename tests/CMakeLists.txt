@@ -127,3 +127,38 @@ add_test(
     NAME tst_diagnosticengine
     COMMAND tst_diagnosticengine
 )
+
+# Dashboard GUI regression tests using a deterministic fake data source.
+qt_add_executable(tst_dashboard
+    tst_dashboard.cpp
+    ../src/domain/BatteryTypes.h
+    ../src/interfaces/IBatteryDataSource.h
+    ../src/model/BatteryModel.h
+    ../src/model/BatteryModel.cpp
+    ../src/controller/DashboardController.h
+    ../src/controller/DashboardController.cpp
+    ../src/services/TelemetryDatabase.h
+    ../src/services/TelemetryDatabase.cpp
+    ../src/services/BatteryHealthCalculator.h
+    ../src/ai/DiagnosticEngine.h
+    ../src/ai/DiagnosticEngine.cpp
+    ../src/view/MainWindow.h
+    ../src/view/MainWindow.cpp
+    ../resources/resources.qrc
+)
+
+target_include_directories(tst_dashboard PRIVATE ../src)
+
+target_link_libraries(tst_dashboard PRIVATE
+    Qt6::Core
+    Qt6::Widgets
+    Qt6::Sql
+    Qt6::SerialPort
+    Qt6::Test
+)
+
+add_test(NAME tst_dashboard COMMAND tst_dashboard)
+
+set_tests_properties(tst_dashboard PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
