@@ -177,7 +177,7 @@ MainWindow::MainWindow(BatteryModel *model, DashboardController *controller, QWi
 
 // TX2 shutdown button
 auto *shutdownButton = new QPushButton(
-    QStringLiteral("SHUT DOWN TX2"), top);
+    QStringLiteral("SHUT DOWN BMS"), top);
 
 shutdownButton->setObjectName("shutdownButton");
 shutdownButton->setMinimumWidth(130);
@@ -371,7 +371,7 @@ connect(shutdownButton, &QPushButton::clicked,
     auto *sidebar = new QFrame; sidebar_ = sidebar; sidebar->setObjectName("sidebar"); sidebar->setMinimumWidth(68); sidebar->setMaximumWidth(218); sidebar->setFixedWidth(218);
     auto *side = new QVBoxLayout(sidebar); side->setContentsMargins(14,22,14,18); side->setSpacing(8);
     sideSectionLabel_ = label("WORKSPACE", "sideSection"); side->addWidget(sideSectionLabel_);
-    const QString navNames[] = {"OVERVIEW", "BATTERY DETAILS", "ALARMS & EVENTS", "SYSTEM STATUS", "HISTORICAL TRENDS", "AI DEMO", "RS-485 DIAGNOSTICS"};
+    const QString navNames[] = {"OVERVIEW", "BATTERY DETAILS", "ALARMS & EVENTS", "SYSTEM STATUS", "HISTORICAL TRENDS", "AI ADVISORY", "RS-485 DIAGNOSTICS"};
     const QString navShort[] = {"HOME", "BATTERIES", "EVENTS", "SYSTEM", "TRENDS", "AI", "RS-485"};
     for (int i = 0; i < 7; ++i) {
         auto *btn = new QPushButton(navNames[i]); btn->setObjectName(i == 0 ? "navButtonActive" : "navButton");
@@ -728,7 +728,7 @@ void MainWindow::loadEventHistory()
 
 QWidget *MainWindow::makeAiDemoPage() {
     auto *page = new QWidget; auto *l = new QVBoxLayout(page); l->setContentsMargins(18,12,18,12); l->setSpacing(8); l->setSizeConstraint(QLayout::SetMinimumSize);
-    l->addWidget(label("AI battery health demo", "pageHeading"));
+    l->addWidget(label("AI battery health Advisory", "pageHeading"));
     const bool isSimulator = controller_ && controller_->sourceId() == QStringLiteral("SIMULATOR");
     auto *description = label(
         isSimulator
@@ -982,7 +982,7 @@ QWidget *MainWindow::makeRs485DiagnosticsPage() {
         "Passive USB-to-serial adapter discovery. This page does not communicate "
         "with the RXN BMS or access the RS-485 bus.",
         "pageDescription");
-    description->setStyleSheet("font-size: 11px;");
+    description->setStyleSheet("font-size: 11px; color: #8ea1b1;");
     description->setWordWrap(true);
     layout->addWidget(description);
 
@@ -994,9 +994,9 @@ QWidget *MainWindow::makeRs485DiagnosticsPage() {
 
     auto addRow = [grid](int row, const QString &caption, QLabel *value) {
         auto *name = new QLabel(caption);
-        name->setStyleSheet("font-size: 10px;");
+        name->setStyleSheet("font-size: 10px; color: #a8bac9;");
         name->setWordWrap(true);
-        value->setStyleSheet("font-size: 11px;");
+        value->setStyleSheet("font-size: 11px; color: #f0f6fb;");
         value->setWordWrap(true);
         value->setTextInteractionFlags(Qt::TextSelectableByMouse);
         grid->addWidget(name, row, 0, Qt::AlignTop);
@@ -1025,7 +1025,7 @@ QWidget *MainWindow::makeRs485DiagnosticsPage() {
     safetyLayout->setSpacing(5);
 
     auto *safetyHeading = label("COMMUNICATION SAFETY", "panelHeading");
-    safetyHeading->setStyleSheet("font-size: 13px;");
+    safetyHeading->setStyleSheet("font-size: 13px; color: #dce7ef;");
     safetyLayout->addWidget(safetyHeading);
 
     auto *safetyText = label(
@@ -1034,7 +1034,7 @@ QWidget *MainWindow::makeRs485DiagnosticsPage() {
         "BMS: NOT CONNECTED — adapter discovery only.\n"
         "No serial port is opened by this diagnostics page.",
         "pageDescription");
-    safetyText->setStyleSheet("font-size: 11px;");
+    safetyText->setStyleSheet("font-size: 11px; color: #8ea1b1;");
     safetyText->setWordWrap(true);
     safetyLayout->addWidget(safetyText);
     layout->addWidget(safetyCard);
