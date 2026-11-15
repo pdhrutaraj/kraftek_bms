@@ -36,7 +36,8 @@ private slots:
 private:
     QWidget *makeMetricCard(const QString &eyebrow, QLabel **value, const QString &unit, const QString &accent);
     QWidget *makeBatteryCard(int index, QLabel **voltage, QLabel **temperature, QLabel **stateOfCharge,
-                             QLabel **stateOfHealth, QProgressBar **socBar, QProgressBar **sohBar);
+                             QLabel **stateOfHealth, QLabel **status, QProgressBar **socBar,
+                             QProgressBar **sohBar);
     QWidget *makeDashboardPage();
     QWidget *makeBatteryPage();
     QWidget *makeAlarmsPage();
@@ -76,6 +77,7 @@ private:
     QLabel *chargeStatusValue_ = nullptr;
     QLabel *weakestBatteryValue_ = nullptr;
     QLabel *batteryVoltage_[4] = {nullptr, nullptr, nullptr, nullptr};
+    QLabel *batteryStatus_[4] = {nullptr, nullptr, nullptr, nullptr};
     QLabel *batteryTemperature_[4] = {nullptr, nullptr, nullptr, nullptr};
     QLabel *batterySoc_[4] = {nullptr, nullptr, nullptr, nullptr};
     QLabel *batterySoh_[4] = {nullptr, nullptr, nullptr, nullptr};

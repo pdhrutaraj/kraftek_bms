@@ -484,13 +484,16 @@ QWidget *MainWindow::makeMetricCard(const QString &eyebrow, QLabel **value, cons
 
 QWidget *MainWindow::makeBatteryCard(int index, QLabel **voltage, QLabel **temperature,
                                      QLabel **stateOfCharge, QLabel **stateOfHealth,
-                                     QProgressBar **socBar, QProgressBar **sohBar) {
+                                     QLabel **status, QProgressBar **socBar,
+                                     QProgressBar **sohBar) {
     auto *card = panel("batteryCard");
     card->setMinimumWidth(0);
     auto *l = new QVBoxLayout(card); l->setContentsMargins(9,8,9,8); l->setSpacing(4);
     auto *head = new QHBoxLayout;
     auto *name = label(QStringLiteral("BATTERY %1").arg(index + 1), "batteryName");
-    name->setWordWrap(true); head->addWidget(name,1); head->addWidget(label("● ONLINE", "statusOnline")); l->addLayout(head);
+    name->setWordWrap(true); head->addWidget(name,1);
+    *status = label("● DATA UNAVAILABLE", "statusUnavailable");
+    head->addWidget(*status); l->addLayout(head);
     auto *voltageRow = new QHBoxLayout;
     *voltage = label("12.58", "batteryVoltage"); (*voltage)->setMinimumWidth(0);
     voltageRow->addWidget(*voltage); voltageRow->addWidget(label("V DC", "metricUnit"),0,Qt::AlignBottom); l->addLayout(voltageRow);
@@ -542,7 +545,7 @@ QWidget *MainWindow::makeDashboardPage() {
     auto *batteryHeading = new QHBoxLayout; batteryHeading->addWidget(label("BATTERY STRING", "sectionHeading")); batteryHeading->addStretch(); auto *meta=label("4 × 12 V / 180 Ah","sectionMeta"); meta->setWordWrap(true); batteryHeading->addWidget(meta); root->addLayout(batteryHeading);
     batteryGrid_=new QGridLayout; batteryGrid_->setSpacing(10); batteryCards_.clear();
     for (int i=0;i<4;++i) {
-        QWidget *card=makeBatteryCard(i,&batteryVoltage_[i],&batteryTemperature_[i],&batterySoc_[i],&batterySoh_[i],&batterySocBars_[i],&batterySohBars_[i]);
+        QWidget *card=makeBatteryCard(i,&batteryVoltage_[i],&batteryTemperature_[i],&batterySoc_[i],&batterySoh_[i],&batteryStatus_[i],&batterySocBars_[i],&batterySohBars_[i]);
         batteryCards_.append(card);
     }
     root->addLayout(batteryGrid_);
@@ -1219,8 +1222,29 @@ void MainWindow::updateMetrics(double voltageV, double currentA, double socPct, 
 
     const auto readings = model_->readings();
     for (int i = 0; i < 4; ++i) {
-        const bool valid = dataFresh && i < readings.size()
+        const bool hasReading = i < readings.size();
+        const bool valid = dataFresh && hasReading
             && readings.at(i).sensorValid;
+
+        if (batteryStatus_[i]) {
+            QString statusText;
+            QString statusStyle;
+            if (!dataFresh || !hasReading) {
+                statusText = QStringLiteral("● DATA UNAVAILABLE");
+                statusStyle = QStringLiteral("statusUnavailable");
+            } else if (!readings.at(i).sensorValid) {
+                statusText = QStringLiteral("● SENSOR FAULT");
+                statusStyle = QStringLiteral("statusFault");
+            } else {
+                statusText = QStringLiteral("● ONLINE");
+                statusStyle = QStringLiteral("statusOnline");
+            }
+            batteryStatus_[i]->setText(statusText);
+            batteryStatus_[i]->setObjectName(statusStyle);
+            batteryStatus_[i]->style()->unpolish(batteryStatus_[i]);
+            batteryStatus_[i]->style()->polish(batteryStatus_[i]);
+        }
+
         if (!valid) {
             if (batteryVoltage_[i]) batteryVoltage_[i]->setText(QStringLiteral("N/A"));
             if (batteryTemperature_[i]) batteryTemperature_[i]->setText(QStringLiteral("N/A"));
