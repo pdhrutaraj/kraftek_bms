@@ -8,6 +8,7 @@
 #include <QFrame>
 #include <QHeaderView>
 #include <QLabel>
+#include <QPixmap>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QStackedWidget>
@@ -153,9 +154,24 @@ MainWindow::MainWindow(BatteryModel *model, DashboardController *controller, QWi
     auto *top = new QFrame; top->setObjectName("topBar"); top->setFixedHeight(76);
     auto *topLayout = new QHBoxLayout(top); topLayout->setContentsMargins(24,10,24,10); topLayout->setSpacing(18);
     auto *brand = new QVBoxLayout; brand->setSpacing(2);
-    auto *brandName = label("Kraftek", "brandName");
-    auto *brandSub = label("POWER SYSTEMS  /  BATTERY MONITORING", "brandSub"); brandSubLabel_ = brandSub;
-    brand->addWidget(brandName); brand->addWidget(brandSub);
+    auto *brandLogo = new QLabel;
+    brandLogo->setObjectName("brandLogo");
+    brandLogo->setFixedSize(170, 42);
+    brandLogo->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
+    const QPixmap logo(QStringLiteral(":/images/kraftek_logo.png"));
+    if (!logo.isNull()) {
+        brandLogo->setPixmap(logo.scaled(
+            brandLogo->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    } else {
+        brandLogo->setText(QStringLiteral("Kraftek"));
+        brandLogo->setObjectName("brandName");
+    }
+
+    auto *brandSub = label("POWER SYSTEMS  /  BATTERY MONITORING", "brandSub");
+    brandSubLabel_ = brandSub;
+    brand->addWidget(brandLogo);
+    brand->addWidget(brandSub);
     auto *separator = new QFrame; separator->setObjectName("topSeparator"); separator->setFixedWidth(1);
     auto *screenName = new QVBoxLayout; screenName->setSpacing(3);
     screenName->addWidget(label("Battery System Console", "screenTitle"));

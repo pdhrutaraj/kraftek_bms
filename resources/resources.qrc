@@ -1,5 +1,6 @@
 <RCC>
   <qresource prefix="/">
     <file alias="styles/bms.qss">styles/bms.qss</file>
+    <file alias="images/kraftek_logo.png">images/kraftek_logo.png</file>
   </qresource>
 </RCC>
