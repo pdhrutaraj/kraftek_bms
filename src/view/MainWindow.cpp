@@ -32,6 +32,11 @@
 #include <QGuiApplication>
 #include <QResizeEvent>
 #include <QSerialPortInfo>
+#include <QSerialPort>
+#include <QThread>
+#include <QPlainTextEdit>
+#include <QScrollBar>
+#include <QElapsedTimer>
 #include <QStringList>
 #include <QScrollArea>
 #include <QSizePolicy>
@@ -427,7 +432,7 @@ connect(shutdownButton, &QPushButton::clicked,
     addScrollablePage(makeSystemPage(), false);
     addScrollablePage(makeTrendPage(), false);
     addScrollablePage(makeAiDemoPage());
-    addScrollablePage(makeRs485DiagnosticsPage(), false);
+    addScrollablePage(makeRs485DiagnosticsPage());
     bodyLayout->addWidget(pages_, 1); outer->addWidget(body, 1);
 
     auto *footer = new QFrame; footer->setObjectName("footerBar"); footer->setFixedHeight(32);
@@ -987,145 +992,407 @@ QWidget *MainWindow::makeSystemPage() {
     return page;
 }
 
-QWidget *MainWindow::makeRs485DiagnosticsPage() {
+
+MainWindow::~MainWindow()
+{
+    if (rs485Worker_ && rs485Worker_->isRunning()) {
+        rs485Worker_->wait();
+    }
+}
+
+void MainWindow::appendRs485Log(const QString &message)
+{
+    if (!rs485Output_)
+        return;
+
+    rs485Output_->appendPlainText(
+        QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz")
+        + "  " + message);
+    rs485Output_->verticalScrollBar()->setValue(
+        rs485Output_->verticalScrollBar()->maximum());
+}
+
+void MainWindow::reportUnverifiedRs485Parameter(const QString &parameter)
+{
+    appendRs485Log(
+        QStringLiteral("%1: NOT SENT — RXN register address, data format "
+                       "and scaling are not verified.")
+            .arg(parameter));
+}
+
+QWidget *MainWindow::makeRs485DiagnosticsPage()
+{
     auto *page = new QWidget;
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(14, 12, 14, 12);
-    layout->setSpacing(7);
+    layout->setSpacing(9);
+    layout->setSizeConstraint(QLayout::SetMinimumSize);
 
     auto *heading = label("RS-485 DIAGNOSTICS", "pageHeading");
     heading->setStyleSheet("font-size: 20px;");
     layout->addWidget(heading);
 
     auto *description = label(
-        "Passive USB-to-serial adapter discovery. This page does not communicate "
-        "with the RXN BMS or access the RS-485 bus.",
+        "RXN X3 communication and register-read test bench. Diagnostic "
+        "results are independent of production dashboard telemetry.",
         "pageDescription");
-    description->setStyleSheet("font-size: 11px; color: #8ea1b1;");
     description->setWordWrap(true);
     layout->addWidget(description);
 
-    auto *card = panel("panel");
-    auto *grid = new QGridLayout(card);
-    grid->setContentsMargins(12, 10, 12, 10);
-    grid->setHorizontalSpacing(12);
-    grid->setVerticalSpacing(7);
+    // Serial interface selection.
+    auto *portCard = panel();
+    auto *portLayout = new QGridLayout(portCard);
+    portLayout->addWidget(label("SERIAL PORT"), 0, 0);
 
-    auto addRow = [grid](int row, const QString &caption, QLabel *value) {
-        auto *name = new QLabel(caption);
-        name->setStyleSheet("font-size: 10px; color: #a8bac9;");
-        name->setWordWrap(true);
-        value->setStyleSheet("font-size: 11px; color: #f0f6fb;");
-        value->setWordWrap(true);
-        value->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        grid->addWidget(name, row, 0, Qt::AlignTop);
-        grid->addWidget(value, row, 1);
-    };
+    rs485PortCombo_ = new QComboBox;
+    rs485PortCombo_->setMinimumWidth(150);
+    portLayout->addWidget(rs485PortCombo_, 0, 1);
+
+    auto *refreshButton = new QPushButton("REFRESH PORTS");
+    portLayout->addWidget(refreshButton, 0, 2);
 
     rs485StatusValue_ = label("Not scanned", "metricValue");
-    rs485PortValue_ = label("Not scanned", "metricValue");
-    rs485MetadataValue_ = label("Not scanned", "metricValue");
-    rs485MetadataValue_->setStyleSheet("font-size: 10px;");
     rs485SettingsValue_ = label(
-        "Previously observed: 9600 baud, 8 data bits, no parity, 1 stop bit (8N1). "
-        "This is not a live BMS protocol verification.",
-        "metricValue");
-
-    addRow(0, "SERIAL INTERFACE DISCOVERY", rs485StatusValue_);
-    addRow(1, "PORT / SYSTEM LOCATION", rs485PortValue_);
-    addRow(2, "USB ADAPTER METADATA", rs485MetadataValue_);
-    addRow(3, "PREVIOUSLY OBSERVED SERIAL SETTINGS", rs485SettingsValue_);
-
-    layout->addWidget(card);
-
-    auto *safetyCard = panel("panel");
-    auto *safetyLayout = new QVBoxLayout(safetyCard);
-    safetyLayout->setContentsMargins(12, 10, 12, 10);
-    safetyLayout->setSpacing(5);
-
-    auto *safetyHeading = label("COMMUNICATION SAFETY", "panelHeading");
-    safetyHeading->setStyleSheet("font-size: 13px; color: #dce7ef;");
-    safetyLayout->addWidget(safetyHeading);
-
-    auto *safetyText = label(
-        "TX: DISABLED — no bytes are transmitted.\n"
-        "RX: DISABLED — no serial data is read.\n"
-        "BMS: NOT CONNECTED — adapter discovery only.\n"
-        "No serial port is opened by this diagnostics page.",
+        "Observed X3 cell-voltage test: 115200, 8N1. "
+        "Manual protocol implementation remains separate at 9600, 8N1.",
         "pageDescription");
-    safetyText->setStyleSheet("font-size: 11px; color: #8ea1b1;");
-    safetyText->setWordWrap(true);
-    safetyLayout->addWidget(safetyText);
-    layout->addWidget(safetyCard);
+    rs485SettingsValue_->setWordWrap(true);
 
-    auto *refreshButton = new QPushButton("REFRESH ADAPTER DISCOVERY");
-    refreshButton->setMinimumHeight(32);
-    refreshButton->setStyleSheet("font-size: 11px; padding: 4px 10px;");
-    layout->addWidget(refreshButton);
+    portLayout->addWidget(label("INTERFACE STATUS"), 1, 0);
+    portLayout->addWidget(rs485StatusValue_, 1, 1, 1, 2);
+    portLayout->addWidget(rs485SettingsValue_, 2, 0, 1, 3);
+
+    layout->addWidget(portCard);
 
     connect(refreshButton, &QPushButton::clicked,
             this, &MainWindow::refreshRs485Diagnostics);
 
+    // Parameter test panel.
+    auto *testCard = panel();
+    auto *testLayout = new QGridLayout(testCard);
+    testLayout->setContentsMargins(12, 10, 12, 10);
+    testLayout->setHorizontalSpacing(8);
+    testLayout->setVerticalSpacing(7);
+
+    auto *testHeading = label("RXN X3 REGISTER READ TESTS", "panelHeading");
+    testLayout->addWidget(testHeading, 0, 0, 1, 5);
+
+    auto addParameterRow = [this, testLayout](
+        int row, const QString &parameter, bool cellParameter,
+        bool verified) {
+
+        auto *name = label(parameter, "pageDescription");
+        testLayout->addWidget(name, row, 0);
+
+        const int count = cellParameter ? 4 : 1;
+
+        for (int i = 0; i < count; ++i) {
+            const QString buttonText = cellParameter
+                ? QStringLiteral("B%1").arg(i + 1)
+                : QStringLiteral("READ");
+
+            auto *button = new QPushButton(buttonText);
+            button->setMinimumHeight(30);
+            button->setObjectName("rs485TestButton");
+            button->setProperty("diagnosticTest", true);
+
+            testLayout->addWidget(button, row, i + 1);
+
+            if (verified && parameter == QStringLiteral("CELL VOLTAGE")) {
+                connect(button, &QPushButton::clicked, this,
+                        [this, i]() { runX3CellVoltageTest(i); });
+            } else {
+                const QString testName = cellParameter
+                    ? QStringLiteral("%1 B%2").arg(parameter).arg(i + 1)
+                    : parameter;
+
+                connect(button, &QPushButton::clicked, this,
+                        [this, testName]() {
+                            reportUnverifiedRs485Parameter(testName);
+                        });
+            }
+        }
+    };
+
+    addParameterRow(1, "CELL VOLTAGE", true, true);
+    addParameterRow(2, "CELL TEMPERATURE", true, false);
+    addParameterRow(3, "CELL SOC", true, false);
+    addParameterRow(4, "CELL SOH", true, false);
+
+    auto *readAll = new QPushButton("READ ALL CELL VOLTAGES");
+    readAll->setMinimumHeight(32);
+    readAll->setObjectName("rs485TestButton");
+    readAll->setProperty("diagnosticTest", true);
+    testLayout->addWidget(readAll, 5, 0, 1, 5);
+
+    connect(readAll, &QPushButton::clicked,
+            this, [this]() { runX3CellVoltageTest(-1); });
+
+    layout->addWidget(testCard);
+
+    // Bank parameters.
+    auto *bankCard = panel();
+    auto *bankLayout = new QGridLayout(bankCard);
+    bankLayout->addWidget(label("BANK PARAMETER TESTS", "panelHeading"), 0, 0, 1, 3);
+
+    const QStringList bankParameters = {
+        "BANK VOLTAGE",
+        "BANK CURRENT",
+        "BANK SOC",
+        "BANK SOH",
+        "BMS TEMPERATURE"
+    };
+
+    int bankRow = 1;
+    for (const QString &parameter : bankParameters) {
+        auto *name = label(parameter, "pageDescription");
+        auto *button = new QPushButton("READ");
+        button->setMinimumHeight(28);
+        button->setObjectName("rs485TestButton");
+        button->setProperty("diagnosticTest", true);
+
+        bankLayout->addWidget(name, bankRow, 0);
+        bankLayout->addWidget(button, bankRow, 1, 1, 2);
+
+        connect(button, &QPushButton::clicked, this,
+                [this, parameter]() {
+                    reportUnverifiedRs485Parameter(parameter);
+                });
+
+        ++bankRow;
+    }
+
+    layout->addWidget(bankCard);
+
+    // Communication output.
+    auto *outputCard = panel();
+    auto *outputLayout = new QVBoxLayout(outputCard);
+    outputLayout->addWidget(label("COMMUNICATION OUTPUT", "panelHeading"));
+
+    rs485Output_ = new QPlainTextEdit;
+    rs485Output_->setReadOnly(true);
+    rs485Output_->setMaximumBlockCount(500);
+    rs485Output_->setMinimumHeight(110);
+    rs485Output_->setMaximumHeight(180);
+    rs485Output_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    rs485Output_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    rs485Output_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    rs485Output_->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    rs485Output_->setPlaceholderText(
+        "Diagnostic test results, transmitted frames and received frames "
+        "will appear here.");
+    outputLayout->addWidget(rs485Output_);
+
+    layout->addWidget(outputCard);
     layout->addStretch();
 
     refreshRs485Diagnostics();
+    appendRs485Log("Diagnostic page ready. No serial communication started.");
+
     return page;
 }
 
-void MainWindow::refreshRs485Diagnostics() {
-    // Passive enumeration only. Do not open, read, or write any serial port.
+void MainWindow::refreshRs485Diagnostics()
+{
+    const QString previousPort =
+        rs485PortCombo_ ? rs485PortCombo_->currentData().toString() : QString();
+
     const QList<QSerialPortInfo> ports = QSerialPortInfo::availablePorts();
 
+    if (rs485PortCombo_) {
+        rs485PortCombo_->clear();
+
+        for (const QSerialPortInfo &info : ports) {
+            rs485PortCombo_->addItem(
+                QStringLiteral("%1 (%2)")
+                    .arg(info.portName(), info.systemLocation()),
+                info.systemLocation());
+        }
+
+        const int previousIndex = rs485PortCombo_->findData(previousPort);
+        if (previousIndex >= 0)
+            rs485PortCombo_->setCurrentIndex(previousIndex);
+    }
+
     if (ports.isEmpty()) {
-        rs485StatusValue_->setText("No serial interfaces detected.");
-        rs485PortValue_->setText("No ports reported by the operating system.");
-        rs485MetadataValue_->setText("Unavailable");
+        if (rs485StatusValue_)
+            rs485StatusValue_->setText("No serial interfaces detected.");
+
+        appendRs485Log("No serial ports detected.");
         return;
     }
 
-    QStringList portDescriptions;
-    QStringList metadataDescriptions;
+    QStringList descriptions;
 
     for (const QSerialPortInfo &info : ports) {
-        portDescriptions.append(
-            QStringLiteral("%1  (%2)")
+        descriptions.append(
+            QStringLiteral("%1 (%2)")
                 .arg(info.portName(), info.systemLocation()));
-
-        QStringList details;
-
-        if (!info.description().trimmed().isEmpty())
-            details.append("Description: " + info.description());
-
-        if (!info.manufacturer().trimmed().isEmpty())
-            details.append("Manufacturer: " + info.manufacturer());
-
-        if (!info.serialNumber().trimmed().isEmpty())
-            details.append("Serial number: " + info.serialNumber());
-
-        if (info.hasVendorIdentifier()) {
-            details.append(
-                QStringLiteral("VID: 0x%1")
-                    .arg(info.vendorIdentifier(), 4, 16, QLatin1Char('0')).toUpper());
-        }
-
-        if (info.hasProductIdentifier()) {
-            details.append(
-                QStringLiteral("PID: 0x%1")
-                    .arg(info.productIdentifier(), 4, 16, QLatin1Char('0')).toUpper());
-        }
-
-        metadataDescriptions.append(
-            info.portName() + ": " +
-            (details.isEmpty() ? QStringLiteral("No additional metadata") :
-                                 details.join(" | ")));
     }
 
-    rs485StatusValue_->setText(
-        QStringLiteral("%1 serial interface(s) detected. No communication performed.")
-            .arg(ports.size()));
+    if (rs485StatusValue_) {
+        rs485StatusValue_->setText(
+            QStringLiteral("%1 serial interface(s) detected.")
+                .arg(ports.size()));
+    }
 
-    rs485PortValue_->setText(portDescriptions.join("\n"));
-    rs485MetadataValue_->setText(metadataDescriptions.join("\n"));
+    appendRs485Log("Available serial ports: " + descriptions.join(", "));
+}
+
+void MainWindow::runX3CellVoltageTest(int cellNumber)
+{
+    if (rs485Busy_) {
+        appendRs485Log("A diagnostic transaction is already running.");
+        return;
+    }
+
+    if (!rs485PortCombo_ || rs485PortCombo_->currentData().toString().isEmpty()) {
+        appendRs485Log("ERROR: Select an available serial port first.");
+        return;
+    }
+
+    const QString portName = rs485PortCombo_->currentData().toString();
+
+    rs485Busy_ = true;
+
+    const auto buttons = findChildren<QPushButton *>("rs485TestButton");
+    for (QPushButton *button : buttons)
+        button->setEnabled(false);
+
+    appendRs485Log(
+        QStringLiteral("Starting RXN X3 cell-voltage test on %1 at 115200 8N1.")
+            .arg(portName));
+
+    // The QSerialPort is created, opened, used and destroyed in this worker.
+    // The GUI thread never performs blocking serial I/O.
+    rs485Worker_ = QThread::create([this, portName, cellNumber]() {
+        QSerialPort serial;
+        serial.setPortName(portName);
+        serial.setBaudRate(QSerialPort::Baud115200);
+        serial.setDataBits(QSerialPort::Data8);
+        serial.setParity(QSerialPort::NoParity);
+        serial.setStopBits(QSerialPort::OneStop);
+        serial.setFlowControl(QSerialPort::NoFlowControl);
+
+        QStringList results;
+        QString error;
+
+        if (!serial.open(QIODevice::ReadWrite)) {
+            error = "Could not open serial port: " + serial.errorString();
+        } else {
+            const int firstCell = cellNumber < 0 ? 0 : cellNumber;
+            const int lastCell = cellNumber < 0 ? 3 : cellNumber;
+
+            for (int cell = firstCell; cell <= lastCell; ++cell) {
+                // Empirically verified RXN X3 request:
+                // [0x30, address, 0, 0, 0, 0, 0, 0x55]
+                const quint8 address = static_cast<quint8>(101 + cell);
+
+                QByteArray request;
+                request.append(char(0x30));
+                request.append(static_cast<char>(address));
+                request.append(char(0));
+                request.append(char(0));
+                request.append(char(0));
+                request.append(char(0));
+                request.append(char(0));
+                request.append(char(0x55));
+
+                serial.clear(QSerialPort::Input);
+
+                const qint64 written = serial.write(request);
+                if (written != request.size()
+                    || !serial.waitForBytesWritten(300)) {
+                    error = QStringLiteral(
+                        "B%1 TX failed: %2")
+                        .arg(cell + 1)
+                        .arg(serial.errorString());
+                    break;
+                }
+
+                QByteArray response;
+                QElapsedTimer timer;
+                timer.start();
+
+                while (response.size() < 4 && timer.elapsed() < 350) {
+                    if (serial.bytesAvailable() == 0)
+                        serial.waitForReadyRead(50);
+
+                    response += serial.read(4 - response.size());
+                }
+
+                const QString txHex = QString::fromLatin1(request.toHex(' ').toUpper());
+                const QString rxHex = QString::fromLatin1(response.toHex(' ').toUpper());
+
+                if (response.size() != 4) {
+                    results.append(
+                        QStringLiteral("B%1 | TX: %2 | RX: %3 | TIMEOUT: received %4/4 bytes")
+                            .arg(cell + 1)
+                            .arg(txHex, rxHex)
+                            .arg(response.size()));
+                    continue;
+                }
+
+                const quint8 ack = static_cast<quint8>(response.at(0));
+
+                if (ack != 1) {
+                    results.append(
+                        QStringLiteral("B%1 | TX: %2 | RX: %3 | ACK: %4 (not success)")
+                            .arg(cell + 1)
+                            .arg(txHex, rxHex)
+                            .arg(ack));
+                    continue;
+                }
+
+                const quint16 raw =
+                    static_cast<quint8>(response.at(1))
+                    | (static_cast<quint16>(
+                           static_cast<quint8>(response.at(2))) << 8);
+
+                const double voltage = raw / 1000.0;
+
+                results.append(
+                    QStringLiteral(
+                        "B%1 | TX: %2 | RX: %3 | ACK: 1 SUCCESS | "
+                        "Raw: %4 | Voltage: %5 V | trailing byte: 0x%6 (unverified)")
+                        .arg(cell + 1)
+                        .arg(txHex, rxHex)
+                        .arg(raw)
+                        .arg(voltage, 0, 'f', 3)
+                        .arg(static_cast<quint8>(response.at(3)), 2, 16,
+                             QLatin1Char('0')).toUpper());
+            }
+
+            serial.close();
+        }
+
+        QMetaObject::invokeMethod(
+            this,
+            [this, results, error]() {
+                rs485Busy_ = false;
+
+                const auto buttons =
+                    findChildren<QPushButton *>("rs485TestButton");
+
+                for (QPushButton *button : buttons)
+                    button->setEnabled(true);
+
+                if (!error.isEmpty())
+                    appendRs485Log("ERROR: " + error);
+
+                for (const QString &result : results)
+                    appendRs485Log(result);
+
+                if (results.isEmpty() && error.isEmpty())
+                    appendRs485Log("No diagnostic response received.");
+            },
+            Qt::QueuedConnection);
+    });
+
+    connect(rs485Worker_, &QThread::finished,
+            rs485Worker_, &QObject::deleteLater);
+
+    rs485Worker_->start();
 }
 
 void MainWindow::showPage(int page) { if (pages_ && page >= 0 && page < pages_->count()) pages_->setCurrentIndex(page); }

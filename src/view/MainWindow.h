@@ -22,11 +22,14 @@ class QComboBox;
 class QCheckBox;
 class QPushButton;
 class QDateTimeEdit;
+class QPlainTextEdit;
+class QThread;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
 public:
     MainWindow(BatteryModel *model, DashboardController *controller, QWidget *parent = nullptr);
+    ~MainWindow() override;
 protected:
     void resizeEvent(QResizeEvent *event) override;
 private slots:
@@ -46,6 +49,9 @@ private:
     QWidget *makeTrendPage();
     QWidget *makeRs485DiagnosticsPage();
     void refreshRs485Diagnostics();
+    void runX3CellVoltageTest(int cellNumber);
+    void appendRs485Log(const QString &message);
+    void reportUnverifiedRs485Parameter(const QString &parameter);
     void updateAiDemo(const QString &scenario, const QString &mlClass,
                       double mlScore, double anomalyScore,
                       int validSensorCount, int invalidSensorCount,
@@ -118,4 +124,8 @@ private:
     QLabel *rs485PortValue_ = nullptr;
     QLabel *rs485MetadataValue_ = nullptr;
     QLabel *rs485SettingsValue_ = nullptr;
+    QComboBox *rs485PortCombo_ = nullptr;
+    QPlainTextEdit *rs485Output_ = nullptr;
+    QThread *rs485Worker_ = nullptr;
+    bool rs485Busy_ = false;
 };
