@@ -5,6 +5,8 @@
 #include <QPointF>
 #include <QDateTime>
 #include <QStringList>
+#include <QPointer>
+#include <atomic>
 
 class QLabel;
 class QTableView;
@@ -49,7 +51,11 @@ private:
     QWidget *makeTrendPage();
     QWidget *makeRs485DiagnosticsPage();
     void refreshRs485Diagnostics();
+    void startRs485Listening();
+    void stopRs485Listening(bool logMessage = true);
+    void updateRs485ListenerControls();
     void runX3CellVoltageTest(int cellNumber);
+    void runX3TemperatureTest(int registerAddress);
     void appendRs485Log(const QString &message);
     void reportUnverifiedRs485Parameter(const QString &parameter);
     void updateAiDemo(const QString &scenario, const QString &mlClass,
@@ -126,6 +132,17 @@ private:
     QLabel *rs485SettingsValue_ = nullptr;
     QComboBox *rs485PortCombo_ = nullptr;
     QPlainTextEdit *rs485Output_ = nullptr;
-    QThread *rs485Worker_ = nullptr;
+    QPointer<QThread> rs485Worker_;
+    QPointer<QThread> rs485ListenerWorker_;
+
+    QPushButton *rs485StartButton_ = nullptr;
+    QPushButton *rs485StopButton_ = nullptr;
+
+    std::atomic_bool rs485ListenerStopRequested_{false};
+
+    bool rs485Listening_ = false;
     bool rs485Busy_ = false;
+    bool shuttingDown_ = false;
+
+    quint64 rs485ListenerGeneration_ = 0;
 };

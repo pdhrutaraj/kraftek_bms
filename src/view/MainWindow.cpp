@@ -32,6 +32,9 @@
 #include <QGuiApplication>
 #include <QResizeEvent>
 #include <QSerialPortInfo>
+#include <QMetaObject>
+#include <QByteArray>
+#include <QChar>
 #include <QSerialPort>
 #include <QThread>
 #include <QPlainTextEdit>
@@ -995,6 +998,12 @@ QWidget *MainWindow::makeSystemPage() {
 
 MainWindow::~MainWindow()
 {
+    shuttingDown_ = true;
+
+    // Stop and join the receive-only listener.
+    stopRs485Listening(false);
+
+    // Wait for any register-test worker.
     if (rs485Worker_ && rs485Worker_->isRunning()) {
         rs485Worker_->wait();
     }
@@ -1019,6 +1028,280 @@ void MainWindow::reportUnverifiedRs485Parameter(const QString &parameter)
                        "and scaling are not verified.")
             .arg(parameter));
 }
+
+
+void MainWindow::updateRs485ListenerControls()
+{
+    const bool testWorkerRunning =
+        rs485Worker_ && rs485Worker_->isRunning();
+
+    if (rs485StartButton_) {
+        rs485StartButton_->setEnabled(
+            !shuttingDown_ &&
+            !rs485Listening_ &&
+            !rs485Busy_ &&
+            !testWorkerRunning);
+    }
+
+    if (rs485StopButton_) {
+        rs485StopButton_->setEnabled(
+            !shuttingDown_ && rs485Listening_);
+    }
+
+    if (rs485PortCombo_) {
+        rs485PortCombo_->setEnabled(
+            !shuttingDown_ &&
+            !rs485Listening_ &&
+            !rs485Busy_ &&
+            !testWorkerRunning);
+    }
+}
+
+
+void MainWindow::startRs485Listening()
+{
+    if (shuttingDown_ || rs485Busy_ || rs485Listening_)
+        return;
+
+    if (rs485Worker_ && rs485Worker_->isRunning()) {
+        appendRs485Log(
+            "ERROR: A register test is still using the serial port.");
+        return;
+    }
+
+    if (!rs485PortCombo_ ||
+        rs485PortCombo_->currentData().toString().isEmpty()) {
+        appendRs485Log(
+            "ERROR: Select an available serial port first.");
+        return;
+    }
+
+    const QString portName =
+        rs485PortCombo_->currentData().toString();
+
+    const quint64 generation = ++rs485ListenerGeneration_;
+
+    rs485ListenerStopRequested_.store(false);
+    rs485Listening_ = true;
+
+    appendRs485Log(
+        QStringLiteral(
+            "Starting receive-only listener: %1, 115200 8N1.")
+            .arg(portName));
+
+    updateRs485ListenerControls();
+
+    QThread *worker = QThread::create(
+        [this, portName, generation]() {
+
+            QSerialPort serial;
+
+            serial.setPortName(portName);
+            serial.setBaudRate(QSerialPort::Baud115200);
+            serial.setDataBits(QSerialPort::Data8);
+            serial.setParity(QSerialPort::NoParity);
+            serial.setStopBits(QSerialPort::OneStop);
+            serial.setFlowControl(QSerialPort::NoFlowControl);
+
+            QString openError;
+
+            if (!serial.open(QIODevice::ReadOnly)) {
+
+                openError =
+                    QStringLiteral("Cannot open %1: %2")
+                        .arg(portName, serial.errorString());
+
+            } else {
+
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, portName, generation]() {
+
+                        if (shuttingDown_ ||
+                            generation != rs485ListenerGeneration_) {
+                            return;
+                        }
+
+                        if (rs485StatusValue_) {
+                            rs485StatusValue_->setText(
+                                "LISTENING — 115200 8N1");
+                        }
+
+                        appendRs485Log(
+                            QStringLiteral(
+                                "Listening on %1. Receive-only mode; "
+                                "no commands transmitted.")
+                                .arg(portName));
+                    },
+                    Qt::QueuedConnection);
+            }
+
+            while (serial.isOpen() &&
+                   !rs485ListenerStopRequested_.load()) {
+
+                if (serial.waitForReadyRead(100)) {
+
+                    QByteArray received = serial.readAll();
+
+                    if (received.isEmpty())
+                        continue;
+
+                    received += serial.readAll();
+
+                    const int byteCount = received.size();
+
+                    const QString hex =
+                        QString::fromLatin1(
+                            received.toHex(' ').toUpper());
+
+                    QString ascii;
+                    ascii.reserve(byteCount);
+
+                    for (char ch : received) {
+
+                        const quint8 byte =
+                            static_cast<quint8>(
+                                static_cast<unsigned char>(ch));
+
+                        if (byte >= 32 && byte <= 126) {
+                            ascii.append(
+                                QChar(static_cast<ushort>(byte)));
+                        } else {
+                            ascii.append(QChar('.'));
+                        }
+                    }
+
+                    QMetaObject::invokeMethod(
+                        this,
+                        [this, hex, ascii, byteCount, generation]() {
+
+                            if (shuttingDown_ ||
+                                generation != rs485ListenerGeneration_) {
+                                return;
+                            }
+
+                            appendRs485Log(
+                                QStringLiteral(
+                                    "RX %1 byte(s) | HEX: %2 | ASCII: %3")
+                                    .arg(byteCount)
+                                    .arg(hex, ascii));
+                        },
+                        Qt::QueuedConnection);
+
+                } else {
+
+                    const QSerialPort::SerialPortError error =
+                        serial.error();
+
+                    if (error != QSerialPort::NoError &&
+                        error != QSerialPort::TimeoutError) {
+
+                        const QString errorMessage =
+                            serial.errorString();
+
+                        QMetaObject::invokeMethod(
+                            this,
+                            [this, errorMessage, generation]() {
+
+                                if (shuttingDown_ ||
+                                    generation != rs485ListenerGeneration_) {
+                                    return;
+                                }
+
+                                appendRs485Log(
+                                    "Listener serial error: " +
+                                    errorMessage);
+                            },
+                            Qt::QueuedConnection);
+
+                        break;
+                    }
+                }
+            }
+
+            if (serial.isOpen())
+                serial.close();
+
+            QMetaObject::invokeMethod(
+                this,
+                [this, openError, generation]() {
+
+                    if (shuttingDown_ ||
+                        generation != rs485ListenerGeneration_) {
+                        return;
+                    }
+
+                    rs485Listening_ = false;
+
+                    if (!openError.isEmpty()) {
+
+                        appendRs485Log(
+                            "ERROR: " + openError);
+
+                        if (rs485StatusValue_) {
+                            rs485StatusValue_->setText(
+                                "LISTENER ERROR");
+                        }
+
+                    } else {
+
+                        if (rs485StatusValue_) {
+                            rs485StatusValue_->setText(
+                                "Listener stopped.");
+                        }
+                    }
+
+                    updateRs485ListenerControls();
+                },
+                Qt::QueuedConnection);
+        });
+
+    rs485ListenerWorker_ = worker;
+
+    connect(
+        worker,
+        &QThread::finished,
+        worker,
+        &QObject::deleteLater);
+
+    worker->start();
+}
+
+
+void MainWindow::stopRs485Listening(bool logMessage)
+{
+    const bool wasListening = rs485Listening_;
+
+    // Invalidate callbacks queued by the previous listener.
+    ++rs485ListenerGeneration_;
+
+    rs485ListenerStopRequested_.store(true);
+
+    if (rs485ListenerWorker_) {
+
+        QThread *worker = rs485ListenerWorker_.data();
+
+        if (worker->isRunning())
+            worker->wait();
+
+        rs485ListenerWorker_ = nullptr;
+    }
+
+    rs485Listening_ = false;
+
+    if (logMessage && wasListening) {
+        appendRs485Log("RS-485 listener stopped.");
+    }
+
+    if (!shuttingDown_) {
+
+        if (rs485StatusValue_)
+            rs485StatusValue_->setText("Listener stopped.");
+
+        updateRs485ListenerControls();
+    }
+}
+
 
 QWidget *MainWindow::makeRs485DiagnosticsPage()
 {
@@ -1051,6 +1334,30 @@ QWidget *MainWindow::makeRs485DiagnosticsPage()
     auto *refreshButton = new QPushButton("REFRESH PORTS");
     portLayout->addWidget(refreshButton, 0, 2);
 
+    rs485StartButton_ = new QPushButton("START LISTENING");
+    rs485StartButton_->setMinimumHeight(34);
+
+    rs485StopButton_ = new QPushButton("STOP LISTENING");
+    rs485StopButton_->setMinimumHeight(34);
+    rs485StopButton_->setEnabled(false);
+
+    portLayout->addWidget(rs485StartButton_, 1, 0);
+    portLayout->addWidget(rs485StopButton_, 1, 1, 1, 2);
+
+    connect(
+        rs485StartButton_,
+        &QPushButton::clicked,
+        this,
+        &MainWindow::startRs485Listening);
+
+    connect(
+        rs485StopButton_,
+        &QPushButton::clicked,
+        this,
+        [this]() {
+            stopRs485Listening();
+        });
+
     rs485StatusValue_ = label("Not scanned", "metricValue");
     rs485SettingsValue_ = label(
         "Observed X3 cell-voltage test: 115200, 8N1. "
@@ -1058,9 +1365,9 @@ QWidget *MainWindow::makeRs485DiagnosticsPage()
         "pageDescription");
     rs485SettingsValue_->setWordWrap(true);
 
-    portLayout->addWidget(label("INTERFACE STATUS"), 1, 0);
-    portLayout->addWidget(rs485StatusValue_, 1, 1, 1, 2);
-    portLayout->addWidget(rs485SettingsValue_, 2, 0, 1, 3);
+    portLayout->addWidget(label("INTERFACE STATUS"), 2, 0);
+    portLayout->addWidget(rs485StatusValue_, 2, 1, 1, 2);
+    portLayout->addWidget(rs485SettingsValue_, 3, 0, 1, 3);
 
     layout->addWidget(portCard);
 
@@ -1115,7 +1422,24 @@ QWidget *MainWindow::makeRs485DiagnosticsPage()
     };
 
     addParameterRow(1, "CELL VOLTAGE", true, true);
-    addParameterRow(2, "CELL TEMPERATURE", true, false);
+    // Battery-temperature register tests. Register-to-physical-sensor
+    // mapping is not yet confirmed, so buttons display register numbers.
+    auto *temperatureName = label("BATTERY TEMPERATURE (REGISTERS 72–75)", "pageDescription");
+    testLayout->addWidget(temperatureName, 2, 0);
+
+    for (int i = 0; i < 4; ++i) {
+        const int registerAddress = 72 + i;
+        auto *button = new QPushButton(QStringLiteral("R%1").arg(registerAddress));
+        button->setMinimumHeight(30);
+        button->setObjectName("rs485TestButton");
+        button->setProperty("diagnosticTest", true);
+        testLayout->addWidget(button, 2, i + 1);
+
+        connect(button, &QPushButton::clicked, this,
+                [this, registerAddress]() {
+                    runX3TemperatureTest(registerAddress);
+                });
+    }
     addParameterRow(3, "CELL SOC", true, false);
     addParameterRow(4, "CELL SOH", true, false);
 
@@ -1127,6 +1451,15 @@ QWidget *MainWindow::makeRs485DiagnosticsPage()
 
     connect(readAll, &QPushButton::clicked,
             this, [this]() { runX3CellVoltageTest(-1); });
+
+    auto *readAllTemperatures = new QPushButton("READ ALL BATTERY TEMPERATURE REGISTERS (72–100)");
+    readAllTemperatures->setMinimumHeight(32);
+    readAllTemperatures->setObjectName("rs485TestButton");
+    readAllTemperatures->setProperty("diagnosticTest", true);
+    testLayout->addWidget(readAllTemperatures, 6, 0, 1, 5);
+
+    connect(readAllTemperatures, &QPushButton::clicked,
+            this, [this]() { runX3TemperatureTest(-1); });
 
     layout->addWidget(testCard);
 
@@ -1154,10 +1487,15 @@ QWidget *MainWindow::makeRs485DiagnosticsPage()
         bankLayout->addWidget(name, bankRow, 0);
         bankLayout->addWidget(button, bankRow, 1, 1, 2);
 
-        connect(button, &QPushButton::clicked, this,
-                [this, parameter]() {
-                    reportUnverifiedRs485Parameter(parameter);
-                });
+        if (parameter == QStringLiteral("BMS TEMPERATURE")) {
+            connect(button, &QPushButton::clicked, this,
+                    [this]() { runX3TemperatureTest(70); });
+        } else {
+            connect(button, &QPushButton::clicked, this,
+                    [this, parameter]() {
+                        reportUnverifiedRs485Parameter(parameter);
+                    });
+        }
 
         ++bankRow;
     }
@@ -1172,11 +1510,11 @@ QWidget *MainWindow::makeRs485DiagnosticsPage()
     rs485Output_ = new QPlainTextEdit;
     rs485Output_->setReadOnly(true);
     rs485Output_->setMaximumBlockCount(500);
-    rs485Output_->setMinimumHeight(110);
-    rs485Output_->setMaximumHeight(180);
+    rs485Output_->setFixedHeight(180);
+    
     rs485Output_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    rs485Output_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    rs485Output_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    rs485Output_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    rs485Output_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     rs485Output_->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     rs485Output_->setPlaceholderText(
         "Diagnostic test results, transmitted frames and received frames "
@@ -1194,6 +1532,12 @@ QWidget *MainWindow::makeRs485DiagnosticsPage()
 
 void MainWindow::refreshRs485Diagnostics()
 {
+    if (rs485Listening_ || rs485Busy_) {
+        appendRs485Log(
+            "Stop listening or finish the current test before refreshing ports.");
+        return;
+    }
+
     const QString previousPort =
         rs485PortCombo_ ? rs485PortCombo_->currentData().toString() : QString();
 
@@ -1237,6 +1581,213 @@ void MainWindow::refreshRs485Diagnostics()
     }
 
     appendRs485Log("Available serial ports: " + descriptions.join(", "));
+    updateRs485ListenerControls();
+}
+
+void MainWindow::runX3TemperatureTest(int registerAddress)
+{
+    if (rs485Busy_) {
+        appendRs485Log("A diagnostic transaction is already running.");
+        return;
+    }
+
+    // Register 70 is the BMS temperature. Battery-temperature registers
+    // are 72 through 100. Register 71 is deliberately excluded.
+    const bool readAllBatteryTemperatures = (registerAddress == -1);
+    if (!readAllBatteryTemperatures &&
+        registerAddress != 70 &&
+        (registerAddress < 72 || registerAddress > 100)) {
+        appendRs485Log("ERROR: Temperature register must be 70 or 72–100.");
+        return;
+    }
+
+    if (!rs485PortCombo_ || rs485PortCombo_->currentData().toString().isEmpty()) {
+        appendRs485Log("ERROR: Select an available serial port first.");
+        return;
+    }
+
+    const QString portName = rs485PortCombo_->currentData().toString();
+
+    const bool resumeListening = rs485Listening_;
+
+    if (resumeListening) {
+        appendRs485Log(
+            "Stopping listener before starting register test.");
+        stopRs485Listening(false);
+    }
+
+    rs485Busy_ = true;
+    updateRs485ListenerControls();
+    const auto buttons = findChildren<QPushButton *>("rs485TestButton");
+    for (QPushButton *button : buttons)
+        button->setEnabled(false);
+
+    const QString testDescription = readAllBatteryTemperatures
+        ? QStringLiteral("battery-temperature registers 72–75")
+        : QStringLiteral("temperature register %1").arg(registerAddress);
+
+    appendRs485Log(
+        QStringLiteral("Starting RXN X3 %1 test on %2 at 115200 8N1. "
+                       "Conversion: temperature °C = raw − 128.")
+            .arg(testDescription, portName));
+
+    // Keep all blocking serial operations inside this worker thread.
+    rs485Worker_ = QThread::create([this, portName, registerAddress,
+                                    readAllBatteryTemperatures, resumeListening]() {
+        QSerialPort serial;
+        serial.setPortName(portName);
+        serial.setBaudRate(QSerialPort::Baud115200);
+        serial.setDataBits(QSerialPort::Data8);
+        serial.setParity(QSerialPort::NoParity);
+        serial.setStopBits(QSerialPort::OneStop);
+        serial.setFlowControl(QSerialPort::NoFlowControl);
+
+        QStringList results;
+        QString error;
+
+        if (!serial.open(QIODevice::ReadWrite)) {
+            error = "Could not open serial port: " + serial.errorString();
+        } else {
+            const int firstRegister =
+                readAllBatteryTemperatures ? 72 : registerAddress;
+            const int lastRegister =
+                readAllBatteryTemperatures ? 75 : registerAddress;
+
+            for (int address = firstRegister; address <= lastRegister; ++address) {
+                // Empirically observed RXN X3 diagnostic request:
+                // [0x30, register, 0, 0, 0, 0, 0, 0x55]
+                // This is intentionally separate from the manual-based
+                // 9600 8N1 protocol implementation.
+                QByteArray request;
+                request.append(static_cast<char>(48));
+                request.append(static_cast<char>(address));
+                request.append(char(0));
+                request.append(char(0));
+                request.append(char(0));
+                request.append(char(0));
+                request.append(char(0));
+                request.append(static_cast<char>(85));
+
+                serial.clear(QSerialPort::Input);
+
+                const qint64 written = serial.write(request);
+                if (written != request.size() ||
+                    !serial.waitForBytesWritten(300)) {
+                    error = QStringLiteral("Register %1 TX failed: %2")
+                                .arg(address)
+                                .arg(serial.errorString());
+                    break;
+                }
+
+                QByteArray response;
+                QElapsedTimer timer;
+                timer.start();
+
+                while (response.size() < 4 && timer.elapsed() < 350) {
+                    if (serial.bytesAvailable() == 0)
+                        serial.waitForReadyRead(50);
+
+                    response += serial.read(4 - response.size());
+                }
+
+                QStringList txBytesDecimal;
+                for (char byte : request) {
+                    txBytesDecimal.append(
+                        QString::number(static_cast<quint8>(byte)));
+                }
+                const QString txHex = txBytesDecimal.join(' ');
+                const QString rxHex =
+                    QString::fromLatin1(response.toHex(' ').toUpper());
+
+                if (response.size() != 4) {
+                    results.append(
+                        QStringLiteral("R%1 | TX: %2 | RX: %3 | TIMEOUT: received %4/4 bytes")
+                            .arg(address)
+                            .arg(txHex, rxHex)
+                            .arg(response.size()));
+                    continue;
+                }
+
+                const quint8 ack =
+                    static_cast<quint8>(response.at(0));
+
+                if (ack != 1) {
+                    results.append(
+                        QStringLiteral("R%1 | TX: %2 | RX: %3 | ACK: %4 (not success)")
+                            .arg(address)
+                            .arg(txHex, rxHex)
+                            .arg(ack));
+                    continue;
+                }
+
+                const quint8 raw =
+                    static_cast<quint8>(response.at(1));
+
+                if (raw == 0) {
+                    results.append(
+                        QStringLiteral(
+                            "R%1 | TX: %2 | RX: %3 | ACK: 1 SUCCESS | "
+                            "Raw: 0 | Temperature: UNAVAILABLE | "
+                            "trailing byte: 0x%4 (unverified)")
+                            .arg(address)
+                            .arg(txHex, rxHex)
+                            .arg(static_cast<quint8>(response.at(3)),
+                                 2, 16, QLatin1Char('0')).toUpper());
+
+                    continue;
+                }
+
+                const int temperatureC =
+                    static_cast<int>(raw) - 128;
+
+                results.append(
+                    QStringLiteral("R%1 | TX: %2 | RX: %3 | ACK: 1 SUCCESS | "
+                                   "Raw: %4 | Temperature: %5 °C | "
+                                   "trailing byte: 0x%6 (unverified)")
+                        .arg(address)
+                        .arg(txHex, rxHex)
+                        .arg(raw)
+                        .arg(temperatureC)
+                        .arg(static_cast<quint8>(response.at(3)),
+                             2, 16, QLatin1Char('0')).toUpper());
+            }
+
+            serial.close();
+        }
+
+        QMetaObject::invokeMethod(
+            this,
+            [this, results, error, resumeListening]() {
+                rs485Busy_ = false;
+
+                const auto buttons =
+                    findChildren<QPushButton *>("rs485TestButton");
+                for (QPushButton *button : buttons)
+                    button->setEnabled(true);
+
+                if (!error.isEmpty())
+                    appendRs485Log("ERROR: " + error);
+
+                for (const QString &result : results)
+                    appendRs485Log(result);
+
+                if (results.isEmpty() && error.isEmpty())
+                    appendRs485Log("No temperature diagnostic response received.");
+
+                updateRs485ListenerControls();
+
+                if (resumeListening && !shuttingDown_) {
+                    appendRs485Log(
+                        "Register test completed. Resuming RS-485 listener.");
+                    startRs485Listening();
+                }
+            },
+            Qt::QueuedConnection);
+    });
+
+    connect(rs485Worker_, &QThread::finished,
+            rs485Worker_, &QObject::deleteLater);
+    rs485Worker_->start();
 }
 
 void MainWindow::runX3CellVoltageTest(int cellNumber)
@@ -1253,7 +1804,16 @@ void MainWindow::runX3CellVoltageTest(int cellNumber)
 
     const QString portName = rs485PortCombo_->currentData().toString();
 
+    const bool resumeListening = rs485Listening_;
+
+    if (resumeListening) {
+        appendRs485Log(
+            "Stopping listener before starting register test.");
+        stopRs485Listening(false);
+    }
+
     rs485Busy_ = true;
+    updateRs485ListenerControls();
 
     const auto buttons = findChildren<QPushButton *>("rs485TestButton");
     for (QPushButton *button : buttons)
@@ -1265,7 +1825,7 @@ void MainWindow::runX3CellVoltageTest(int cellNumber)
 
     // The QSerialPort is created, opened, used and destroyed in this worker.
     // The GUI thread never performs blocking serial I/O.
-    rs485Worker_ = QThread::create([this, portName, cellNumber]() {
+    rs485Worker_ = QThread::create([this, portName, cellNumber, resumeListening]() {
         QSerialPort serial;
         serial.setPortName(portName);
         serial.setBaudRate(QSerialPort::Baud115200);
@@ -1289,14 +1849,14 @@ void MainWindow::runX3CellVoltageTest(int cellNumber)
                 const quint8 address = static_cast<quint8>(101 + cell);
 
                 QByteArray request;
-                request.append(char(0x30));
+                request.append(static_cast<char>(48));
                 request.append(static_cast<char>(address));
                 request.append(char(0));
                 request.append(char(0));
                 request.append(char(0));
                 request.append(char(0));
                 request.append(char(0));
-                request.append(char(0x55));
+                request.append(static_cast<char>(85));
 
                 serial.clear(QSerialPort::Input);
 
@@ -1321,7 +1881,12 @@ void MainWindow::runX3CellVoltageTest(int cellNumber)
                     response += serial.read(4 - response.size());
                 }
 
-                const QString txHex = QString::fromLatin1(request.toHex(' ').toUpper());
+                QStringList txBytesDecimal;
+                for (char byte : request) {
+                    txBytesDecimal.append(
+                        QString::number(static_cast<quint8>(byte)));
+                }
+                const QString txHex = txBytesDecimal.join(' ');
                 const QString rxHex = QString::fromLatin1(response.toHex(' ').toUpper());
 
                 if (response.size() != 4) {
@@ -1368,7 +1933,7 @@ void MainWindow::runX3CellVoltageTest(int cellNumber)
 
         QMetaObject::invokeMethod(
             this,
-            [this, results, error]() {
+            [this, results, error, resumeListening]() {
                 rs485Busy_ = false;
 
                 const auto buttons =
@@ -1385,6 +1950,14 @@ void MainWindow::runX3CellVoltageTest(int cellNumber)
 
                 if (results.isEmpty() && error.isEmpty())
                     appendRs485Log("No diagnostic response received.");
+
+                updateRs485ListenerControls();
+
+                if (resumeListening && !shuttingDown_) {
+                    appendRs485Log(
+                        "Register test completed. Resuming RS-485 listener.");
+                    startRs485Listening();
+                }
             },
             Qt::QueuedConnection);
     });
